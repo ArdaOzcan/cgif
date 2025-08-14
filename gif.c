@@ -1,4 +1,6 @@
 #include "gif.h"
+#include "hashmap.h"
+#include <string.h>
 
 void
 arena_init(Arena* arena, void* base, size_t size)
@@ -36,6 +38,7 @@ void
 ArenaFree_(size_t bytes, void* ptr, void* context)
 {
 }
+
 void*
 array_init(size_t item_size, size_t capacity, Allocator* allocator)
 {
@@ -231,55 +234,6 @@ bit_array_pad_last_byte(BitArray* bitArray)
     bitArray->current_bit_index = 0;
 }
 
-int
-dict_find(Dictionary dict, const char* value, size_t valueLength)
-{
-    for (size_t i = 0; i < dict_len(&dict); i++) {
-        const char* str = dict.array[i];
-        if (str[valueLength] != '\0')
-            continue;
-        int result = memcmp(str, value, valueLength);
-        if (result == 0)
-            return i;
-    }
-
-    return -1;
-}
-
-void
-dict_add(Allocator* allocator,
-         Dictionary* dictionary,
-         const char* value,
-         size_t valueLength)
-{
-    char* copy = make(char, valueLength + 1, allocator);
-    memcpy(copy, value, valueLength);
-    copy[valueLength] = '\0';
-
-    array_append(dictionary->array, copy);
-
-    int dictLength = dict_len(dictionary);
-
-    assert(dictLength <= LZW_DICT_MAX_CAP);
-}
-
-Dictionary
-dict_init(size_t capacity, Allocator* allocator)
-{
-    char** arr = array_init(sizeof(const char*), LZW_DICT_MIN_CAP, allocator);
-    return (Dictionary){ .array = arr };
-}
-
-void
-dict_print(Dictionary dict)
-{
-    printf("{\n");
-    for (int i = 0; i < dict_len(&dict); i++) {
-        printf("%d: \"%s\", \n", i, dict.array[i]);
-    }
-    printf("}\n");
-}
-
 u8*
 gif_compress_lzw(Allocator* allocator,
                  u8 min_code_size,
@@ -287,15 +241,17 @@ gif_compress_lzw(Allocator* allocator,
                  size_t indices_len,
                  size_t* compressed_len)
 {
-    Dictionary dict = dict_init(LZW_DICT_MIN_CAP, allocator);
+    Hashmap hashmap = hashmap_make(LZW_DICT_MAX_CAP, allocator);
     const size_t clear_code = 1 << min_code_size;
     const size_t eoi_code = clear_code + 1;
 
     for (u8 i = 0; i <= eoi_code; i++) {
-        char data[2];
-        data[0] = '0' + i;
-        data[1] = '\0';
-        dict_add(allocator, &dict, data, 2);
+        char* key = make(char, 2, allocator);
+        key[0] = '0' + i;
+        key[1] = '\0';
+        u16* val = make(u16, 1, allocator);
+        *val = i;
+        hashmap_insert(&hashmap, key, val);
     }
 
     BitArray bit_array;
@@ -314,39 +270,46 @@ gif_compress_lzw(Allocator* allocator,
         array_append(input_buf, '0' + indices[i]);
         input_buf[array_len(input_buf)] = '\0';
 
-        int result = dict_find(dict, input_buf, array_len(input_buf));
+        char* result = hashmap_get(&hashmap, input_buf);
         // printf("INPUT: %s\n", input_buf);
 
-        if (result < 0) {
-            dict_add(allocator, &dict, input_buf, array_len(input_buf));
+        if (result == NULL) {
+            char* key = make(char, array_len(input_buf) + 1, allocator);
+            memcpy(key, input_buf, array_len(input_buf));
+            key[array_len(input_buf)] = '\0';
+            u16* val = make(u16, 1, allocator);
+            *val = hashmap.length;
+            hashmap_insert(&hashmap, key, val);
 
-            // printf("#%zu: %s\n",
-            // dict_len(&dict) - 1,
-            // dict.array[dict_len(&dict) - 1]);
+            // Temporarily change last character
+            // because strings are null terminated...
+            char c = input_buf[array_len(input_buf) - 1];
+            input_buf[array_len(input_buf) - 1] = '\0';
 
-            int idx = dict_find(dict, input_buf, array_len(input_buf) - 1);
-            if (idx < 0) {
-                // printf("%s was not found in dictionary.\n", input_buf);
-                assert(idx >= 0);
-            }
+            u16* idx = hashmap_get(&hashmap, input_buf);
 
-            bit_array_push(&bit_array, idx, code_size);
+            input_buf[array_len(input_buf) - 1] = c;
+
+            assert(idx != NULL);
+
+            bit_array_push(&bit_array, *idx, code_size);
             // printf("OUTPUT: %d\n", idx);
 
             input_buf[0] = input_buf[array_len(input_buf) - 1];
             input_buf[1] = '\0';
             array_len(input_buf) = 1;
 
-            if (dict_len(&dict) > (1 << code_size)) {
+            if (hashmap.length > (1 << code_size)) {
                 code_size++;
             }
         }
     }
 
-    int idx = dict_find(dict, input_buf, array_len(input_buf));
-    assert(idx >= 0);
+    u16* idx = hashmap_get(&hashmap, input_buf);
 
-    bit_array_push(&bit_array, idx, code_size);
+    assert(idx != NULL);
+
+    bit_array_push(&bit_array, *idx, code_size);
 
     bit_array_push(&bit_array, eoi_code, code_size);
     bit_array_pad_last_byte(&bit_array);
