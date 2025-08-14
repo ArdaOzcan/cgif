@@ -1,6 +1,4 @@
-main: main.c
+test: test.c
 	mkdir -p build
-	gcc -g main.c -o build/main
-
-run: main
-	./build/main
+	clang -g gif.c test.c munit/munit.c -I munit/include -o build/test
+	./build/test
