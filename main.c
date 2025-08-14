@@ -17,11 +17,16 @@ typedef uint16_t u16;
 #define KILOBYTE 1024
 #define MEGABYTE 1024 * 1024
 
-#define GIF_MAX_BLOCK_LENGTH 254
-#define LZE_DICT_MAX_CAP 4096
-#define LZW_DICT_MIN_CAP 256
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
-#define LZW_ALLOC_SIZE 32 * MEGABYTE
+#define LZW_ALLOC_SIZE 64 * KILOBYTE
+
+#define GIF_MAX_BLOCK_LENGTH 254
+#define INPUT_BUFFER_CAP 256
+
+#define LZW_DICT_MAX_CAP 4 * KILOBYTE
+#define LZW_DICT_MIN_CAP 2 * KILOBYTE
+
+#define BIT_ARRAY_MIN_CAP 2 * KILOBYTE
 
 typedef struct
 {
@@ -102,6 +107,7 @@ array_init(size_t item_size, size_t capacity, Allocator* allocator)
     void* ptr = NULL;
     if (header) {
         header->capacity = capacity;
+        printf("Array initialized with capacity %zu\n", capacity);
         header->length = 0;
         header->allocator = allocator;
         ptr = header + 1;
@@ -121,7 +127,6 @@ array_check_cap(void* arr, size_t added_count, size_t item_size)
     size_t desired_capacity = header->length + added_count;
     if (desired_capacity > header->capacity) {
         // Realloc array
-        printf("Reallocing array.\n");
         size_t new_capacity = 2 * header->capacity;
         while (new_capacity < desired_capacity) {
             new_capacity *= 2;
@@ -134,6 +139,9 @@ array_check_cap(void* arr, size_t added_count, size_t item_size)
         if (new_header) {
             size_t old_size =
               sizeof(ArrayHeader) + header->capacity * item_size;
+            printf("Reallocing array from %zu bytes to %zu bytes.\n",
+                   old_size,
+                   new_size);
             memcpy(new_header, header, old_size);
 
             if (header->allocator->free) {
@@ -213,7 +221,7 @@ gif_write_logical_screen_descriptor(Arena* gif_data,
 #define get_lsb_mask(length) ((1 << length) - 1)
 
 void
-gif_write_global_color_table(Arena* gif_data, Color256RGB* colors)
+gif_write_global_color_table(Arena* gif_data, const Color256RGB* colors)
 {
     u8 N = ((u8*)gif_data->base)[10] & get_lsb_mask(3);
     u8 colorAmount = 1 << (N + 1);
@@ -228,14 +236,14 @@ gif_write_img_descriptor(Arena* gif_data,
                          u16 top,
                          u16 width,
                          u16 height,
-                         u8 localColorTable)
+                         u8 local_color_table)
 {
     arena_copy_size(gif_data, ",", sizeof(char));
     arena_copy_size(gif_data, &left, sizeof(u16));
     arena_copy_size(gif_data, &top, sizeof(u16));
     arena_copy_size(gif_data, &width, sizeof(u16));
     arena_copy_size(gif_data, &height, sizeof(u16));
-    arena_copy_size(gif_data, &localColorTable, sizeof(u8));
+    arena_copy_size(gif_data, &local_color_table, sizeof(u8));
 }
 
 void
@@ -300,11 +308,6 @@ bit_array_push(BitArray* bit_array, u16 data, u8 bit_amount)
         data >>= split_bit_amount;
 
         array_append(bit_array->array, bit_array->current_byte);
-        printf("%02x == %02x (%zu, %p)\n",
-               bit_array->current_byte,
-               bit_array->array[array_len(bit_array->array) - 1],
-               array_len(bit_array->array) - 1,
-               &bit_array->array[array_len(bit_array->array) - 1]);
         bit_array->current_byte = 0;
         bit_array->current_bit_index = 0;
     }
@@ -345,20 +348,20 @@ dict_find(Dictionary dict, const char* value, size_t valueLength)
 }
 
 void
-dict_add(Allocator* a,
+dict_add(Allocator* allocator,
          Dictionary* dictionary,
          const char* value,
          size_t valueLength)
 {
-    char* copy = make(char, valueLength + 1, a);
+    char* copy = make(char, valueLength + 1, allocator);
     memcpy(copy, value, valueLength);
     copy[valueLength] = '\0';
 
     array_append(dictionary->array, copy);
 
     int dictLength = dict_len(dictionary);
-    // printf("%s added.\n", dictionary->array[dictLength - 1]);
-    // assert(dictLength <= LZE_DICT_MAX_CAP);
+
+    assert(dictLength <= LZW_DICT_MAX_CAP);
 }
 
 Dictionary
@@ -371,11 +374,11 @@ dict_init(size_t capacity, Allocator* allocator)
 void
 dict_print(Dictionary dict)
 {
-    // printf("{\n");
+    printf("{\n");
     for (int i = 0; i < dict_len(&dict); i++) {
-        // printf("%d: \"%s\", \n", i, dict.array[i]);
+        printf("%d: \"%s\", \n", i, dict.array[i]);
     }
-    // printf("}\n");
+    printf("}\n");
 }
 
 u8*
@@ -386,10 +389,10 @@ gif_compress_lzw(Allocator* allocator,
                  size_t* compressed_len)
 {
     Dictionary dict = dict_init(LZW_DICT_MIN_CAP, allocator);
-    const size_t clearCode = 1 << min_code_size;
-    const size_t eoiCode = clearCode + 1;
+    const size_t clear_code = 1 << min_code_size;
+    const size_t eoi_code = clear_code + 1;
 
-    for (u8 i = 0; i <= eoiCode; i++) {
+    for (u8 i = 0; i <= eoi_code; i++) {
         char data[2];
         data[0] = '0' + i;
         data[1] = '\0';
@@ -398,13 +401,16 @@ gif_compress_lzw(Allocator* allocator,
 
     BitArray bit_array;
 
-    u8* bit_array_buf = array_init(sizeof(u8), 128, allocator);
+    u8* bit_array_buf = array_init(sizeof(u8), BIT_ARRAY_MIN_CAP, allocator);
     bit_array_init(&bit_array, bit_array_buf);
 
-    u8 codeSize = min_code_size + 1;
-    bit_array_push(&bit_array, clearCode, codeSize);
+    // Starts from min + 1 because min_code_size is for colors only
+    // special codes (clear code and end of instruction code) are
+    // not included
+    u8 code_size = min_code_size + 1;
+    bit_array_push(&bit_array, clear_code, code_size);
 
-    char* input_buf = array_init(sizeof(char), 128, allocator);
+    char* input_buf = array_init(sizeof(char), INPUT_BUFFER_CAP, allocator);
     for (size_t i = 0; i < indices_len; i++) {
         array_append(input_buf, '0' + indices[i]);
         input_buf[array_len(input_buf)] = '\0';
@@ -425,15 +431,15 @@ gif_compress_lzw(Allocator* allocator,
                 assert(idx >= 0);
             }
 
-            bit_array_push(&bit_array, idx, codeSize);
+            bit_array_push(&bit_array, idx, code_size);
             // printf("OUTPUT: %d\n", idx);
 
             input_buf[0] = input_buf[array_len(input_buf) - 1];
             input_buf[1] = '\0';
             array_len(input_buf) = 1;
 
-            if (dict_len(&dict) > (1 << codeSize)) {
-                codeSize++;
+            if (dict_len(&dict) > (1 << code_size)) {
+                code_size++;
             }
         }
     }
@@ -441,9 +447,9 @@ gif_compress_lzw(Allocator* allocator,
     int idx = dict_find(dict, input_buf, array_len(input_buf));
     assert(idx >= 0);
 
-    bit_array_push(&bit_array, idx, codeSize);
+    bit_array_push(&bit_array, idx, code_size);
 
-    bit_array_push(&bit_array, eoiCode, codeSize);
+    bit_array_push(&bit_array, eoi_code, code_size);
     bit_array_pad_last_byte(&bit_array);
     *compressed_len = array_len(bit_array.array);
     return bit_array.array;
@@ -462,22 +468,84 @@ gif_write_img_extension(Arena* gif_data)
     }
 }
 
+typedef struct
+{
+    u16 left;
+    u16 top;
+    u16 width;
+    u16 height;
+    bool has_gct;
+    u8 color_resolution;
+    bool sort;
+    u8 gct_size_n;
+    u8 background;
+    u8 pixel_aspect_ratio;
+    u8 local_color_table;
+    u8 min_code_size;
+} GIFMetadata;
+
+void
+gif_export(GIFMetadata metadata,
+           const Color256RGB* colors,
+           const u8* indices,
+           const char* out_path)
+{
+    Arena gif_data;
+    void* gif_base = malloc(GIF_ALLOC_SIZE);
+    arena_init(&gif_data, gif_base, GIF_ALLOC_SIZE);
+
+    gif_write_header(&gif_data);
+    gif_write_logical_screen_descriptor(&gif_data,
+                                        metadata.width,
+                                        metadata.height,
+                                        metadata.has_gct,
+                                        metadata.color_resolution,
+                                        metadata.sort,
+                                        metadata.gct_size_n,
+                                        metadata.background,
+                                        metadata.pixel_aspect_ratio);
+
+    gif_write_global_color_table(&gif_data, colors);
+    gif_write_img_extension(&gif_data);
+    gif_write_img_descriptor(&gif_data,
+                             metadata.left,
+                             metadata.top,
+                             metadata.width,
+                             metadata.height,
+                             metadata.local_color_table);
+
+    Arena lzw_arena;
+    void* lzw_base = malloc(LZW_ALLOC_SIZE);
+    arena_init(&lzw_arena, lzw_base, LZW_ALLOC_SIZE);
+    Allocator lzw_alloc = arena_alloc_init(&lzw_arena);
+
+    size_t compressed_len = 0;
+    u8* compressed = gif_compress_lzw(&lzw_alloc,
+                                      metadata.min_code_size,
+                                      indices,
+                                      metadata.width * metadata.height,
+                                      &compressed_len);
+
+    gif_write_img_data(
+      &gif_data, metadata.min_code_size, compressed, compressed_len);
+    gif_write_trailer(&gif_data);
+
+    FILE* file = fopen(out_path, "w");
+    if (file) {
+        fwrite(gif_data.base, sizeof(char), gif_data.used, file);
+        fclose(file);
+    }
+
+    printf("GIF Arena used: %zu\n", gif_data.used);
+    printf("LZW Arena used: %zu\n", lzw_arena.used);
+    printf("\n");
+    free(gif_base);
+    free(lzw_base);
+}
+
 int
 main()
 {
-    Arena gif_data;
-    void* gifBase = malloc(GIF_ALLOC_SIZE);
-    arena_init(&gif_data, gifBase, GIF_ALLOC_SIZE);
-
-    Arena lzwArena;
-    void* lzwBase = malloc(LZW_ALLOC_SIZE);
-    arena_init(&lzwArena, lzwBase, LZW_ALLOC_SIZE);
-    Allocator lzwAlloc = arena_alloc_init(&lzwArena);
-
-    gif_write_header(&gif_data);
-    gif_write_logical_screen_descriptor(
-      &gif_data, WIDTH, HEIGHT, true, COLOR_RES, false, GCT_SIZE_N, 0x10, 0);
-
     Color256RGB colors[] = {
         { 0, 0, 0 },       { 7, 64, 48 },     { 50, 50, 68 },
         { 85, 86, 100 },   { 56, 115, 154 },  { 0, 137, 203 },
@@ -798,33 +866,19 @@ main()
         9,  9,  9,  9,  9,  9,  9,  9,  9,  9
     };
 
-    gif_write_global_color_table(&gif_data, colors);
-    gif_write_img_extension(&gif_data);
-    gif_write_img_descriptor(&gif_data, 0, 0, WIDTH, HEIGHT, 0);
+    GIFMetadata metadata = (GIFMetadata){ .background = 0x10,
+                                          .color_resolution = COLOR_RES,
+                                          .sort = 0,
+                                          .local_color_table = 0,
+                                          .pixel_aspect_ratio = 0,
+                                          .min_code_size = LZW_MIN_CODE_LENGTH,
+                                          .gct_size_n = GCT_SIZE_N,
+                                          .left = 0,
+                                          .top = 0,
+                                          .width = WIDTH,
+                                          .height = HEIGHT,
+                                          .has_gct = true };
 
-    size_t compressed_len = 0;
-    u8* compressed = gif_compress_lzw(
-      &lzwAlloc, LZW_MIN_CODE_LENGTH, indices, WIDTH * HEIGHT, &compressed_len);
-
-    for (int i = 0; i < compressed_len; i++) {
-        printf("%02x ", compressed[i]);
-    }
-    printf("\n");
-
-    gif_write_img_data(
-      &gif_data, LZW_MIN_CODE_LENGTH, compressed, compressed_len);
-    gif_write_trailer(&gif_data);
-
-    FILE* file = fopen("out/out.gif", "w");
-
-    fwrite(gif_data.base, sizeof(char), gif_data.used, file);
-
-    fclose(file);
-
-    // printf("GIF Arena used: %zu\n", gif_data.used);
-    // printf("LZE Arena used: %zu\n", lzwArena.used);
-    // printf("\n");
-    free(gifBase);
-    free(lzwBase);
+    gif_export(metadata, colors, indices, "out/out.gif");
     return 0;
 }
