@@ -13,6 +13,17 @@ hash_str(char* key)
     return sum;
 }
 
+void
+hashmap_clear(Hashmap* hashmap)
+{
+    for (int i = 0; i < hashmap->capacity; i++) {
+        hashmap->records[i].type = EMPTY;
+        hashmap->records[i].key = NULL;
+        hashmap->records[i].value = NULL;
+    }
+    hashmap->length = 0;
+}
+
 Hashmap
 hashmap_make(size_t capacity, Allocator* allocator)
 {

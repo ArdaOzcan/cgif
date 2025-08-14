@@ -1,5 +1,6 @@
 #include "gif.h"
 #include "hashmap.h"
+#include <stdio.h>
 #include <string.h>
 
 void
@@ -125,7 +126,6 @@ gif_write_logical_screen_descriptor(Arena* gif_data,
     arena_copy_size(gif_data, &height, sizeof(u16));
 
     u8 packed = 0;
-    // 0b1010 0101
     packed |= gct << 7;                     // 1000 0000
     packed |= (colorResolution & 0x7) << 4; // 0111 0000
     packed |= sort << 3;                    // 0000 1000
@@ -206,10 +206,11 @@ bit_array_push(BitArray* bit_array, u16 data, u8 bit_amount)
 {
     u8 bits_left = bit_amount;
     u8 split_bit_amount = 0;
+    u8 mask = 0;
     while (bit_array->current_bit_index + bits_left > 8) {
         split_bit_amount = 8 - bit_array->current_bit_index;
 
-        u8 mask = get_lsb_mask(split_bit_amount);
+        mask = get_lsb_mask(split_bit_amount);
         bit_array->current_byte |= (data & mask)
                                    << bit_array->current_bit_index;
         bit_array->current_bit_index += split_bit_amount;
@@ -217,11 +218,14 @@ bit_array_push(BitArray* bit_array, u16 data, u8 bit_amount)
         data >>= split_bit_amount;
 
         array_append(bit_array->array, bit_array->current_byte);
+        printf("%zu: 0x%02x\n",
+               array_len(bit_array->array),
+               bit_array->current_byte);
         bit_array->current_byte = 0;
         bit_array->current_bit_index = 0;
     }
 
-    u8 mask = get_lsb_mask(bits_left);
+    mask = get_lsb_mask(bits_left);
     bit_array->current_byte |= (data & mask) << bit_array->current_bit_index;
     bit_array->current_bit_index += bits_left;
 }
@@ -232,6 +236,19 @@ bit_array_pad_last_byte(BitArray* bitArray)
     array_append(bitArray->array, bitArray->current_byte);
     bitArray->current_byte = 0;
     bitArray->current_bit_index = 0;
+}
+
+void
+lzw_dict_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
+{
+    for (u16 i = 0; i <= eoi_code; i++) {
+        char* key = make(char, 2, allocator);
+        key[0] = '0' + i;
+        key[1] = '\0';
+        u16* val = make(u16, 1, allocator);
+        *val = i;
+        hashmap_insert(hashmap, key, val);
+    }
 }
 
 u8*
@@ -245,14 +262,7 @@ gif_compress_lzw(Allocator* allocator,
     const size_t clear_code = 1 << min_code_size;
     const size_t eoi_code = clear_code + 1;
 
-    for (u8 i = 0; i <= eoi_code; i++) {
-        char* key = make(char, 2, allocator);
-        key[0] = '0' + i;
-        key[1] = '\0';
-        u16* val = make(u16, 1, allocator);
-        *val = i;
-        hashmap_insert(&hashmap, key, val);
-    }
+    lzw_dict_reset(&hashmap, eoi_code, allocator);
 
     BitArray bit_array;
 
@@ -271,15 +281,18 @@ gif_compress_lzw(Allocator* allocator,
         input_buf[array_len(input_buf)] = '\0';
 
         char* result = hashmap_get(&hashmap, input_buf);
-        // printf("INPUT: %s\n", input_buf);
+        printf("INPUT: %s\n", input_buf);
 
         if (result == NULL) {
             char* key = make(char, array_len(input_buf) + 1, allocator);
             memcpy(key, input_buf, array_len(input_buf));
             key[array_len(input_buf)] = '\0';
+
             u16* val = make(u16, 1, allocator);
             *val = hashmap.length;
+
             hashmap_insert(&hashmap, key, val);
+            printf("'%s': %d\n", key, *val);
 
             // Temporarily change last character
             // because strings are null terminated...
@@ -293,13 +306,18 @@ gif_compress_lzw(Allocator* allocator,
             assert(idx != NULL);
 
             bit_array_push(&bit_array, *idx, code_size);
-            // printf("OUTPUT: %d\n", idx);
 
             input_buf[0] = input_buf[array_len(input_buf) - 1];
             input_buf[1] = '\0';
             array_len(input_buf) = 1;
 
-            if (hashmap.length > (1 << code_size)) {
+            if (hashmap.length >= LZW_DICT_MAX_CAP) {
+                code_size = min_code_size + 1;
+                bit_array_push(&bit_array, clear_code, code_size);
+                hashmap_clear(&hashmap);
+                printf("---CLEAR---\n");
+                lzw_dict_reset(&hashmap, eoi_code, allocator);
+            } else if (hashmap.length > (1 << code_size)) {
                 code_size++;
             }
         }
@@ -314,6 +332,7 @@ gif_compress_lzw(Allocator* allocator,
     bit_array_push(&bit_array, eoi_code, code_size);
     bit_array_pad_last_byte(&bit_array);
     *compressed_len = array_len(bit_array.array);
+    printf("Dictionary length: %zu\n", hashmap.length);
     return bit_array.array;
 }
 

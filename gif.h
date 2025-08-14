@@ -15,12 +15,12 @@ typedef uint16_t u16;
 #define MEGABYTE 1024 * 1024
 
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
-#define LZW_ALLOC_SIZE 128 * KILOBYTE
+#define LZW_ALLOC_SIZE 2 * MEGABYTE
 
 #define GIF_MAX_BLOCK_LENGTH 254
 #define INPUT_BUFFER_CAP 256
 
-#define LZW_DICT_MAX_CAP 4 * KILOBYTE
+#define LZW_DICT_MAX_CAP 64
 #define LZW_DICT_MIN_CAP 2 * KILOBYTE
 
 #define BIT_ARRAY_MIN_CAP 2 * KILOBYTE
@@ -165,8 +165,6 @@ bit_array_push(BitArray* bit_array, u16 data, u8 bit_amount);
 
 void
 bit_array_pad_last_byte(BitArray* bitArray);
-
-#define dict_len(dict) (array_len((dict)->array))
 
 u8*
 gif_compress_lzw(Allocator* allocator,

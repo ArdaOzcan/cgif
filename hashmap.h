@@ -31,6 +31,9 @@ typedef struct
 u16
 hash_str(char* key);
 
+void
+hashmap_clear(Hashmap* hashmap);
+
 Hashmap
 hashmap_make(size_t capacity, Allocator* allocator);
 
