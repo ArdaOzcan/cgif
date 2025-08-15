@@ -1,10 +1,11 @@
 #ifndef HASHMAP_H
 #define HASHMAP_H
+
 #include "gif.h"
-#include <assert.h>
-#include <stddef.h>
+
 #include <stdlib.h>
-#include <string.h>
+#include <stdio.h>
+#include <stdbool.h>
 
 typedef enum
   : u8

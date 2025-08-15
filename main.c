@@ -1,6 +1,8 @@
 #include "test-images/cat64.h"
 #include "gif.h"
 
+#include <stdbool.h>
+
 int
 main(void)
 {
