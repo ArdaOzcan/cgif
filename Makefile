@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -g -Wall -Werror
+CFLAGS = -g -Wall
 
 BUILD_DIR = build
 SRC_DIR = .

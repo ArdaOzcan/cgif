@@ -2,6 +2,7 @@
 #define GIF_H
 
 #include "mem.h"
+
 #include <stdbool.h>
 
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
@@ -10,8 +11,8 @@
 #define GIF_MAX_BLOCK_LENGTH 254
 #define INPUT_BUFFER_CAP 256
 
-#define LZW_DICT_MAX_CAP 64
-#define LZW_DICT_MIN_CAP 2 * KILOBYTE
+#define LZW_DICT_MAX_CAP 4096
+#define LZW_DICT_MIN_CAP 2048
 
 #define BIT_ARRAY_MIN_CAP 2 * KILOBYTE
 

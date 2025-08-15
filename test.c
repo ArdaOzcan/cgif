@@ -83,8 +83,8 @@ test_cat_256(const MunitParameter params[], void* user_data_or_fixture)
                                           .image_extension = false,
                                           .has_gct = true };
 
-    gif_export(metadata, cat256_colors, cat256_indices, "out/out.gif");
-    assert_binary_files_equal("out/out.gif", "test-images/cat256.gif");
+    gif_export(metadata, cat256_colors, cat256_indices, "out/out256_test.gif");
+    assert_binary_files_equal("out/out256_test.gif", "test-images/cat256.gif");
 
     return MUNIT_OK;
 }
@@ -107,8 +107,8 @@ test_cat_64(const MunitParameter params[], void* user_data_or_fixture)
                                           .image_extension = true,
                                           .has_gct = true };
 
-    gif_export(metadata, cat64_colors, cat64_indices, "out/out.gif");
-    assert_binary_files_equal("out/out.gif", "test-images/cat64.gif");
+    gif_export(metadata, cat64_colors, cat64_indices, "out/out64_test.gif");
+    assert_binary_files_equal("out/out64_test.gif", "test-images/cat64.gif");
 
     return MUNIT_OK;
 }
@@ -131,8 +131,8 @@ test_cat_16(const MunitParameter params[], void* user_data_or_fixture)
                                           .has_gct = true,
                                           .image_extension = false };
 
-    gif_export(metadata, cat16_colors, cat16_indices, "out/out.gif");
-    assert_binary_files_equal("out/out.gif", "test-images/cat16.gif");
+    gif_export(metadata, cat16_colors, cat16_indices, "out/out16_test.gif");
+    assert_binary_files_equal("out/out16_test.gif", "test-images/cat16.gif");
 
     return MUNIT_OK;
 }

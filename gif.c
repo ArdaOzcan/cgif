@@ -1,9 +1,10 @@
 #include "gif.h"
 #include "hashmap.h"
+#include "mem.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 
 void
 gif_write_header(Arena* gif_data, GIFVersion version)
@@ -71,11 +72,11 @@ gif_write_img_descriptor(Arena* gif_data,
 
 void
 gif_write_img_data(Arena* gif_data,
-                   u8 lzwMinCodeSize,
+                   u8 lzw_min_code,
                    u8* bytes,
                    size_t bytes_length)
 {
-    arena_copy_size(gif_data, &lzwMinCodeSize, sizeof(u8));
+    arena_copy_size(gif_data, &lzw_min_code, sizeof(u8));
 
     size_t bytes_left = bytes_length;
     while (bytes_left) {
@@ -125,9 +126,9 @@ bit_array_push(BitArray* bit_array, u16 data, u8 bit_amount)
         data >>= split_bit_amount;
 
         array_append(bit_array->array, bit_array->current_byte);
-        printf("%zu: 0x%02x\n",
-               array_len(bit_array->array),
-               bit_array->current_byte);
+        // printf("%zu: 0x%02x\n",
+        //        array_len(bit_array->array),
+        //        bit_array->current_byte);
         bit_array->current_byte = 0;
         bit_array->current_bit_index = 0;
     }
@@ -183,44 +184,51 @@ gif_compress_lzw(Allocator* allocator,
     bit_array_push(&bit_array, clear_code, code_size);
 
     char* input_buf = array_init(sizeof(char), INPUT_BUFFER_CAP, allocator);
-    for (size_t i = 0; i < indices_len; i++) {
-        array_append(input_buf, '0' + indices[i]);
-        input_buf[array_len(input_buf)] = '\0';
+    array_append(input_buf, '0' + indices[0]);
+    input_buf[array_len(input_buf)] = '\0';
 
-        char* result = hashmap_get(&hashmap, input_buf);
-        printf("INPUT: %s\n", input_buf);
+    char* appended = array_init(sizeof(char), INPUT_BUFFER_CAP, allocator);
+    for (size_t i = 1; i < indices_len; i++) {
+        char K = '0' + indices[i];
 
-        if (result == NULL) {
-            char* key = make(char, array_len(input_buf) + 1, allocator);
-            memcpy(key, input_buf, array_len(input_buf));
-            key[array_len(input_buf)] = '\0';
+        array_len(appended) = array_len(input_buf);
+        memcpy(appended, input_buf, array_len(input_buf));
+
+        array_append(appended, K);
+        appended[array_len(appended)] = '\0';
+
+        char* result = hashmap_get(&hashmap, appended);
+        // printf("INPUT: %s\n", input_buf);
+
+        if (result != NULL) {
+            array_append(input_buf, K);
+            input_buf[array_len(input_buf)] = '\0';
+        } else {
+            char* key = make(char, array_len(appended) + 1, allocator);
+            memcpy(key, appended, array_len(appended));
+            key[array_len(appended)] = '\0';
 
             u16* val = make(u16, 1, allocator);
             *val = hashmap.length;
 
             hashmap_insert(&hashmap, key, val);
-            printf("'%s': %d\n", key, *val);
+            // printf("'%s': %d\n", key, *val);
 
             // Temporarily change last character
             // because strings are null terminated...
-            char c = input_buf[array_len(input_buf) - 1];
-            input_buf[array_len(input_buf) - 1] = '\0';
-
             u16* idx = hashmap_get(&hashmap, input_buf);
-
-            input_buf[array_len(input_buf) - 1] = c;
 
             assert(idx != NULL);
 
             bit_array_push(&bit_array, *idx, code_size);
 
-            input_buf[0] = input_buf[array_len(input_buf) - 1];
+            input_buf[0] = K;
             input_buf[1] = '\0';
             array_len(input_buf) = 1;
 
             if (hashmap.length >= LZW_DICT_MAX_CAP) {
-                code_size = min_code_size + 1;
                 bit_array_push(&bit_array, clear_code, code_size);
+                code_size = min_code_size + 1;
                 hashmap_clear(&hashmap);
                 printf("---CLEAR---\n");
                 lzw_dict_reset(&hashmap, eoi_code, allocator);
