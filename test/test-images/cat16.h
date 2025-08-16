@@ -1,4 +1,4 @@
-#include "../gif.h"
+#include <gifbuf/gifbuf.h>
 #include <stdint.h>
 
 static Color256RGB cat16_colors[] = {
@@ -68,7 +68,7 @@ static Color256RGB cat16_colors[] = {
     { 255, 255, 255 }, { 255, 255, 255 }, { 255, 255, 255 }, { 255, 255, 255 }
 };
 
-static u8 cat16_indices[] = {
+static uint8_t cat16_indices[] = {
     9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  6,
     9,  9,  9,  9,  9,  9,  9,  9,  9,  0,  0,  11, 9,  9,  9,  6,  5,  9,  9,
     9,  9,  9,  9,  10, 0,  15, 0,  11, 9,  9,  9,  6,  14, 15, 6,  6,  6,  2,

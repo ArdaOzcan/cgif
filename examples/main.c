@@ -1,5 +1,5 @@
-#include "test-images/cat256.h"
-#include "gif.h"
+#include "../test/test-images/cat256.h"
+#include <gifbuf/gifbuf.h>
 
 #include <stdbool.h>
 

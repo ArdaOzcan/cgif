@@ -1,105 +1,31 @@
-#include "gif.h"
 #include "core.h"
+#include <gifbuf/gifbuf.h>
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
-void
-gif_write_header(Arena* gif_data, GIFVersion version)
+#define GIF_ALLOC_SIZE 1 * MEGABYTE
+#define LZW_ALLOC_SIZE 256 * KILOBYTE
+
+#define GIF_MAX_BLOCK_LENGTH 254
+#define INPUT_BUFFER_CAP 256
+
+#define LZW_DICT_MAX_CAP 4096
+#define LZW_DICT_MIN_CAP 2048
+
+#define BIT_ARRAY_MIN_CAP 2 * KILOBYTE
+
+#define get_lsb_mask(length) ((1 << length) - 1)
+
+typedef struct
 {
-    switch (version) {
-        case GIF87a:
-            arena_copy_size(gif_data, "GIF87a", 6);
-            break;
-        case GIF89a:
-            arena_copy_size(gif_data, "GIF89a", 6);
-            break;
-    }
-}
-
-void
-gif_write_logical_screen_descriptor(Arena* gif_data,
-                                    u16 width,
-                                    u16 height,
-                                    bool gct,
-                                    u8 colorResolution,
-                                    bool sort,
-                                    u8 gctSize,
-                                    u8 background,
-                                    u8 pixelAspectRatio)
-{
-    arena_copy_size(gif_data, &width, sizeof(u16));
-    arena_copy_size(gif_data, &height, sizeof(u16));
-
-    u8 packed = 0;
-    packed |= gct << 7;                     // 1000 0000
-    packed |= (colorResolution & 0x7) << 4; // 0111 0000
-    packed |= sort << 3;                    // 0000 1000
-    packed |= (gctSize & 0x7);              // 0000 0111
-
-    arena_copy_size(gif_data, &packed, sizeof(u8));
-    arena_copy_size(gif_data, &background, sizeof(u8));
-    arena_copy_size(gif_data, &pixelAspectRatio, sizeof(u8));
-}
-
-void
-gif_write_global_color_table(Arena* gif_data, const Color256RGB* colors)
-{
-    u8 N = ((u8*)gif_data->base)[10] & get_lsb_mask(3);
-    u8 colorAmount = 1 << (N + 1);
-    for (u8 i = 0; i < colorAmount; i++) {
-        arena_copy_size(gif_data, &colors[i], sizeof(Color256RGB));
-    }
-}
-
-void
-gif_write_img_descriptor(Arena* gif_data,
-                         u16 left,
-                         u16 top,
-                         u16 width,
-                         u16 height,
-                         u8 local_color_table)
-{
-    arena_copy_size(gif_data, ",", sizeof(char));
-    arena_copy_size(gif_data, &left, sizeof(u16));
-    arena_copy_size(gif_data, &top, sizeof(u16));
-    arena_copy_size(gif_data, &width, sizeof(u16));
-    arena_copy_size(gif_data, &height, sizeof(u16));
-    arena_copy_size(gif_data, &local_color_table, sizeof(u8));
-}
-
-void
-gif_write_img_data(Arena* gif_data,
-                   u8 lzw_min_code,
-                   u8* bytes,
-                   size_t bytes_length)
-{
-    arena_copy_size(gif_data, &lzw_min_code, sizeof(u8));
-
-    size_t bytes_left = bytes_length;
-    while (bytes_left) {
-        u8 block_length = bytes_left >= GIF_MAX_BLOCK_LENGTH
-                            ? GIF_MAX_BLOCK_LENGTH
-                            : bytes_left;
-        arena_copy_size(gif_data, &block_length, sizeof(u8));
-        arena_copy_size(gif_data,
-                        &bytes[bytes_length - bytes_left],
-                        block_length * sizeof(u8));
-        bytes_left -= block_length;
-    }
-
-    const u8 terminator = '\0';
-    arena_copy_size(gif_data, &terminator, sizeof(u8));
-}
-
-void
-gif_write_trailer(Arena* arena)
-{
-    const u8 trailer = 0x3B;
-    arena_copy_size(arena, &trailer, 1);
-}
+    u8* array;
+    u8 current_byte;
+    u8 current_bit_index;
+} BitArray;
 
 BitArray
 bit_array_init(u8* buffer)
@@ -241,6 +167,54 @@ gif_compress_lzw(Allocator* allocator,
 }
 
 void
+gif_write_header(Arena* gif_data, GIFVersion version)
+{
+    switch (version) {
+        case GIF87a:
+            arena_copy_size(gif_data, "GIF87a", 6);
+            break;
+        case GIF89a:
+            arena_copy_size(gif_data, "GIF89a", 6);
+            break;
+    }
+}
+
+void
+gif_write_logical_screen_descriptor(Arena* gif_data,
+                                    u16 width,
+                                    u16 height,
+                                    bool gct,
+                                    u8 colorResolution,
+                                    bool sort,
+                                    u8 gctSize,
+                                    u8 background,
+                                    u8 pixelAspectRatio)
+{
+    arena_copy_size(gif_data, &width, sizeof(u16));
+    arena_copy_size(gif_data, &height, sizeof(u16));
+
+    u8 packed = 0;
+    packed |= gct << 7;                     // 1000 0000
+    packed |= (colorResolution & 0x7) << 4; // 0111 0000
+    packed |= sort << 3;                    // 0000 1000
+    packed |= (gctSize & 0x7);              // 0000 0111
+
+    arena_copy_size(gif_data, &packed, sizeof(u8));
+    arena_copy_size(gif_data, &background, sizeof(u8));
+    arena_copy_size(gif_data, &pixelAspectRatio, sizeof(u8));
+}
+
+void
+gif_write_global_color_table(Arena* gif_data, const Color256RGB* colors)
+{
+    u8 N = ((u8*)gif_data->base)[10] & get_lsb_mask(3);
+    u8 colorAmount = 1 << (N + 1);
+    for (u8 i = 0; i < colorAmount; i++) {
+        arena_copy_size(gif_data, &colors[i], sizeof(Color256RGB));
+    }
+}
+
+void
 gif_write_img_extension(Arena* gif_data)
 {
     // Dummy bytes for now
@@ -251,6 +225,53 @@ gif_write_img_extension(Arena* gif_data)
     for (int i = 0; i < sizeof(bytes) / sizeof(u8); i++) {
         arena_copy_size(gif_data, &bytes[i], sizeof(u8));
     }
+}
+
+void
+gif_write_img_descriptor(Arena* gif_data,
+                         u16 left,
+                         u16 top,
+                         u16 width,
+                         u16 height,
+                         u8 local_color_table)
+{
+    arena_copy_size(gif_data, ",", sizeof(char));
+    arena_copy_size(gif_data, &left, sizeof(u16));
+    arena_copy_size(gif_data, &top, sizeof(u16));
+    arena_copy_size(gif_data, &width, sizeof(u16));
+    arena_copy_size(gif_data, &height, sizeof(u16));
+    arena_copy_size(gif_data, &local_color_table, sizeof(u8));
+}
+
+void
+gif_write_img_data(Arena* gif_data,
+                   u8 lzw_min_code,
+                   u8* bytes,
+                   size_t bytes_length)
+{
+    arena_copy_size(gif_data, &lzw_min_code, sizeof(u8));
+
+    size_t bytes_left = bytes_length;
+    while (bytes_left) {
+        u8 block_length = bytes_left >= GIF_MAX_BLOCK_LENGTH
+                            ? GIF_MAX_BLOCK_LENGTH
+                            : bytes_left;
+        arena_copy_size(gif_data, &block_length, sizeof(u8));
+        arena_copy_size(gif_data,
+                        &bytes[bytes_length - bytes_left],
+                        block_length * sizeof(u8));
+        bytes_left -= block_length;
+    }
+
+    const u8 terminator = '\0';
+    arena_copy_size(gif_data, &terminator, sizeof(u8));
+}
+
+void
+gif_write_trailer(Arena* arena)
+{
+    const u8 trailer = 0x3B;
+    arena_copy_size(arena, &trailer, 1);
 }
 
 void
@@ -305,8 +326,14 @@ gif_export(GIFMetadata metadata,
         fclose(file);
     }
 
-    printf("GIF Arena used: %zu\n", gif_data.used);
-    printf("LZW Arena used: %zu\n", lzw_arena.used);
+    printf("GIF Arena used: %.2f%% (%zu/%zu bytes)\n",
+           100.0f * gif_data.used / gif_data.size,
+           gif_data.used,
+           gif_data.size);
+    printf("LZW Arena used: %.2f%% (%zu/%zu bytes)\n",
+           100.0f * lzw_arena.used / lzw_arena.size,
+           lzw_arena.used,
+           lzw_arena.size);
     printf("\n");
     free(gif_base);
     free(lzw_base);
