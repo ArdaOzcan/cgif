@@ -107,6 +107,7 @@ cstr_from_dynstr(const char* src, Allocator* allocator)
     cstr[array_len(src)] = '\0';
     return cstr;
 }
+
 char*
 dynstr_from_cstr(const char* cstr, size_t capacity, Allocator* allocator)
 {
@@ -149,10 +150,10 @@ dynstr_append(char* dest, const char* src)
 }
 
 void
-dynstr_copy(char* dest, const char* src)
+dynstr_set(char* dest, const char* src)
 {
-    size_t src_len = strlen(src);
-    size_t diff = dynstr_len(dest) - src_len;
+    size_t src_len = dynstr_len(src);
+    int diff = src_len - dynstr_len(dest);
     if (diff > 0) {
         array_ensure_capacity(dest, diff, sizeof(char));
     }

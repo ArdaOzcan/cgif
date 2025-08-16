@@ -110,6 +110,6 @@ void
 dynstr_clear(char* str);
 
 void
-dynstr_copy(char * dest, const char * src);
+dynstr_set(char * dest, const char * src);
 
 #endif // MEM_H

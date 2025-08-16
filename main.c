@@ -1,4 +1,4 @@
-#include "test-images/cat16.h"
+#include "test-images/cat256.h"
 #include "gif.h"
 
 #include <stdbool.h>
@@ -16,11 +16,11 @@ main(void)
                                           .gct_size_n = 3,
                                           .left = 0,
                                           .top = 0,
-                                          .width = 16,
-                                          .height = 16,
-                                          .has_gct = true,
-                                          .image_extension = false };
+                                          .width = 256,
+                                          .height = 256,
+                                          .image_extension = false,
+                                          .has_gct = true };
 
-    gif_export(metadata, cat16_colors, cat16_indices, "out/out16_test.gif");
+    gif_export(metadata, cat256_colors, cat256_indices, "out/out256_test.gif");
     return 0;
 }

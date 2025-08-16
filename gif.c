@@ -190,7 +190,7 @@ gif_compress_lzw(Allocator* allocator,
     for (size_t i = 1; i < indices_len; i++) {
         char k = '0' + indices[i];
 
-        dynstr_copy(appended, input_buf);
+        dynstr_set(appended, input_buf);
         dynstr_append_c(appended, k);
 
         char* result = hashmap_get(&hashmap, appended);

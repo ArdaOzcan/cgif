@@ -29,8 +29,8 @@ typedef struct
     size_t length;
 } Hashmap;
 
-u16
-hash_str(char* key);
+uint64_t
+hash_str(const char* key);
 
 Hashmap
 hashmap_init(size_t capacity, Allocator* allocator);
