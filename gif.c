@@ -194,7 +194,7 @@ gif_compress_lzw(Allocator* allocator,
         string_append_c(appended, k);
 
         char* result = hashmap_get(&hashmap, appended);
-        printf("INPUT: %s\n", input_buf);
+        // printf("INPUT: %s\n", input_buf);
 
         if (result != NULL) {
             string_append_c(input_buf, k);
@@ -206,7 +206,7 @@ gif_compress_lzw(Allocator* allocator,
             *val = hashmap.length;
 
             hashmap_insert(&hashmap, key, val);
-            printf("'%s': %d\n", key, *val);
+            // printf("'%s': %d\n", key, *val);
 
             u16* idx = hashmap_get(&hashmap, input_buf);
 
