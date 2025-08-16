@@ -89,24 +89,27 @@ array_ensure_capacity(void* arr, size_t added_count, size_t item_size);
 #define array_pop_back(a) (a[--array_header(a)->length])
 
 
-#define string_len(str) (array_len(str) - 1)
+#define dynstr_len(str) (array_len(str) - 1)
 
 char*
-string_from_cstr(const char* cstr, size_t capacity, Allocator* allocator);
+cstr_from_dynstr(const char* src, Allocator* allocator);
 
 char*
-string_init(size_t capacity, Allocator* a);
+dynstr_from_cstr(const char* cstr, size_t capacity, Allocator* allocator);
+
+char*
+dynstr_init(size_t capacity, Allocator* a);
 
 void
-string_append_c(char * dest, char src);
+dynstr_append_c(char * dest, char src);
 
 void
-string_append(char * dest, const char * src);
+dynstr_append(char * dest, const char * src);
 
 void
-string_clear(char* str);
+dynstr_clear(char* str);
 
 void
-string_copy(char * dest, const char * src);
+dynstr_copy(char * dest, const char * src);
 
 #endif // MEM_H

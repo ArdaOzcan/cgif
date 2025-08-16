@@ -100,7 +100,15 @@ array_ensure_capacity(void* arr, size_t added_count, size_t item_size)
 }
 
 char*
-string_from_cstr(const char* cstr, size_t capacity, Allocator* allocator)
+cstr_from_dynstr(const char* src, Allocator* allocator)
+{
+    char* cstr = make(char, array_len(src) + 1, allocator);
+    memcpy(cstr, src, array_len(src));
+    cstr[array_len(src)] = '\0';
+    return cstr;
+}
+char*
+dynstr_from_cstr(const char* cstr, size_t capacity, Allocator* allocator)
 {
     size_t len = strlen(cstr);
 
@@ -113,7 +121,7 @@ string_from_cstr(const char* cstr, size_t capacity, Allocator* allocator)
 }
 
 char*
-string_init(size_t capacity, Allocator* a)
+dynstr_init(size_t capacity, Allocator* a)
 {
     char* arr = array(char, capacity, a);
     array_append(arr, '\0');
@@ -122,29 +130,29 @@ string_init(size_t capacity, Allocator* a)
 }
 
 void
-string_append_c(char* dest, char src)
+dynstr_append_c(char* dest, char src)
 {
     array_ensure_capacity(dest, 1, sizeof(char));
-    size_t dest_str_len = string_len(dest);
+    size_t dest_str_len = dynstr_len(dest);
     dest[dest_str_len] = src;
     dest[dest_str_len + 1] = '\0';
     array_header(dest)->length += 1;
 }
 
 void
-string_append(char* dest, const char* src)
+dynstr_append(char* dest, const char* src)
 {
     size_t len = strlen(src);
     array_ensure_capacity(dest, len, sizeof(char));
     memcpy(dest + len, src, len);
-    dest[string_len(dest)] = '\0';
+    dest[dynstr_len(dest)] = '\0';
 }
 
 void
-string_copy(char* dest, const char* src)
+dynstr_copy(char* dest, const char* src)
 {
     size_t src_len = strlen(src);
-    size_t diff = string_len(dest) - src_len;
+    size_t diff = dynstr_len(dest) - src_len;
     if (diff > 0) {
         array_ensure_capacity(dest, diff, sizeof(char));
     }
@@ -155,7 +163,7 @@ string_copy(char* dest, const char* src)
 }
 
 void
-string_clear(char* str)
+dynstr_clear(char* str)
 {
     array_len(str) = 1;
     str[0] = '\0';

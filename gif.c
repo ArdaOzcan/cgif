@@ -183,26 +183,23 @@ gif_compress_lzw(Allocator* allocator,
     u8 code_size = min_code_size + 1;
     bit_array_push(&bit_array, clear_code, code_size);
 
-    char* input_buf = string_init(INPUT_BUFFER_CAP, allocator);
-    string_append_c(input_buf, '0' + indices[0]);
+    char* input_buf = dynstr_init(INPUT_BUFFER_CAP, allocator);
+    dynstr_append_c(input_buf, '0' + indices[0]);
 
-    char* appended = string_init(INPUT_BUFFER_CAP, allocator);
+    char* appended = dynstr_init(INPUT_BUFFER_CAP, allocator);
     for (size_t i = 1; i < indices_len; i++) {
         char k = '0' + indices[i];
 
-        string_copy(appended, input_buf);
-        string_append_c(appended, k);
+        dynstr_copy(appended, input_buf);
+        dynstr_append_c(appended, k);
 
         char* result = hashmap_get(&hashmap, appended);
         // printf("INPUT: %s\n", input_buf);
 
         if (result != NULL) {
-            string_append_c(input_buf, k);
+            dynstr_append_c(input_buf, k);
         } else {
-            char* key = make(char, array_len(appended) + 1, allocator);
-            memcpy(key, appended, array_len(appended));
-            key[array_len(appended)] = '\0';
-
+            char* key = cstr_from_dynstr(appended, allocator);
             u16* val = make(u16, 1, allocator);
             *val = hashmap.length;
 
@@ -215,8 +212,8 @@ gif_compress_lzw(Allocator* allocator,
 
             bit_array_push(&bit_array, *idx, code_size);
 
-            string_clear(input_buf);
-            string_append_c(input_buf, k);
+            dynstr_clear(input_buf);
+            dynstr_append_c(input_buf, k);
 
             if (hashmap.length >= LZW_DICT_MAX_CAP) {
                 printf("---CLEAR---\n");
