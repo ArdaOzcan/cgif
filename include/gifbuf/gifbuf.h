@@ -1,22 +1,16 @@
-#ifndef INTERFACE_H
-#define INTERFACE_H
+#ifndef GIFBUF_H
+#define GIFBUF_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef struct
-{
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-} Color256RGB;
+typedef uint8_t Color256RGB[3];
 
 typedef enum
 {
     GIF87a,
     GIF89a
 } GIFVersion;
-
 
 typedef struct
 {
@@ -42,5 +36,4 @@ gif_export(GIFMetadata metadata,
            const uint8_t* indices,
            const char* out_path);
 
-
-#endif // INTERFACE_H
+#endif // GIFBUF_H
