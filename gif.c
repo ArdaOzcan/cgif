@@ -199,8 +199,9 @@ gif_compress_lzw(Allocator* allocator,
         if (result != NULL) {
             string_append_c(input_buf, k);
         } else {
-            char* key =
-              string_from_cstr(appended, array_len(appended), allocator);
+            char* key = make(char, array_len(appended) + 1, allocator);
+            memcpy(key, appended, array_len(appended));
+            key[array_len(appended)] = '\0';
 
             u16* val = make(u16, 1, allocator);
             *val = hashmap.length;
