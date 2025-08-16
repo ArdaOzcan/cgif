@@ -4,7 +4,7 @@ CFLAGS = -g -Wall
 BUILD_DIR = build
 SRC_DIR = .
 
-LIB_FILES = $(SRC_DIR)/mem.c $(SRC_DIR)/gif.c $(SRC_DIR)/hashmap.c
+LIB_FILES = $(SRC_DIR)/core.c $(SRC_DIR)/gif.c
 MAIN_FILE = $(SRC_DIR)/main.c
 TEST_FILE = $(SRC_DIR)/test.c
 MUNIT_FILE = $(SRC_DIR)/munit/munit.c

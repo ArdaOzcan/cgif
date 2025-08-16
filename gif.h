@@ -1,7 +1,7 @@
 #ifndef GIF_H
 #define GIF_H
 
-#include "mem.h"
+#include "core.h"
 
 #include <stdbool.h>
 

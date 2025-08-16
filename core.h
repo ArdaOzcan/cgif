@@ -1,8 +1,9 @@
-#ifndef MEM_H
-#define MEM_H
+#ifndef CORE_H
+#define CORE_H
 
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -112,4 +113,50 @@ dynstr_clear(char* str);
 void
 dynstr_set(char * dest, const char * src);
 
-#endif // MEM_H
+typedef enum
+  : u8
+{
+    FILLED,
+    EMPTY,
+    DELETED
+} HashmapRecordType;
+
+typedef struct
+{
+    HashmapRecordType type;
+    char* key;
+    void* value;
+} HashmapRecord;
+
+typedef struct
+{
+    HashmapRecord* records;
+    size_t capacity;
+    size_t length;
+} Hashmap;
+
+uint64_t
+hash_str(const char* key);
+
+Hashmap
+hashmap_init(size_t capacity, Allocator* allocator);
+
+void
+hashmap_clear(Hashmap* hashmap);
+
+bool
+hashmap_insert(Hashmap* hashmap, char* key, void* value);
+
+void*
+hashmap_get(Hashmap* hashmap, char* key);
+
+void*
+hashmap_delete(Hashmap* hashmap, char* key);
+
+void
+hashmap_print(Hashmap* hashmap);
+
+size_t
+hashmap_len(Hashmap* hashmap);
+
+#endif // CORE_H

@@ -1,9 +1,9 @@
 #include "gif.h"
-#include "hashmap.h"
-#include "mem.h"
+#include "core.h"
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 void
