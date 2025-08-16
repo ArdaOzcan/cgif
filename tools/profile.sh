@@ -5,7 +5,6 @@ usage() {
   echo "Usage: $0 [-c] [-m] [-t] [--callgrind] [--massif] [--tracy]"
   echo "  -c, --callgrind    Run valgrind callgrind and generate graphs"
   echo "  -m, --massif       Run valgrind massif and launch massif-visualizer"
-  echo "  -t, --tracy        Run the program normally and launch tracy-profiler"
   exit 1
 }
 
@@ -15,7 +14,6 @@ fi
 
 RUN_CALLGRIND=0
 RUN_MASSIF=0
-RUN_TRACY=0
 
 while [[ $# -gt 0 ]]; do
   arg="$1"
@@ -28,10 +26,6 @@ while [[ $# -gt 0 ]]; do
       RUN_MASSIF=1
       shift
       ;;
-    --tracy)
-      RUN_TRACY=1
-      shift
-      ;;
     -[cmt]*)
       # Parse combined short options, e.g. -mct or -mtc
       opts="${arg:1}"
@@ -39,7 +33,6 @@ while [[ $# -gt 0 ]]; do
         case "${opts:$i:1}" in
           c) RUN_CALLGRIND=1 ;;
           m) RUN_MASSIF=1 ;;
-          t) RUN_TRACY=1 ;;
           *)
             echo "Unknown option: -${opts:$i:1}"
             usage
@@ -93,15 +86,6 @@ if [[ $RUN_MASSIF -eq 1 ]]; then
 
   echo "Launching massif-visualizer..."
   massif-visualizer "$MASSIF_OUT" &
-fi
-
-if [[ $RUN_TRACY -eq 1 ]]; then
-  echo "Running program normally and launching tracy-profiler..."
-  "$ROOT_DIR/vendor/tracy/profiler/build/tracy-profiler" -a 127.0.0.1 &
-  "$PROGRAM" &
-  PROGRAM_PID=$!
-
-  wait $PROGRAM_PID
 fi
 
 echo "Done."
