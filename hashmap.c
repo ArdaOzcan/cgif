@@ -1,5 +1,4 @@
 #include "hashmap.h"
-#include "gif.h"
 
 u16
 hash_str(char* key)
@@ -25,7 +24,7 @@ hashmap_clear(Hashmap* hashmap)
 }
 
 Hashmap
-hashmap_make(size_t capacity, Allocator* allocator)
+hashmap_init(size_t capacity, Allocator* allocator)
 {
     Hashmap hashmap;
     hashmap.records =

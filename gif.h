@@ -16,7 +16,6 @@
 
 #define BIT_ARRAY_MIN_CAP 2 * KILOBYTE
 
-
 typedef struct
 {
     u8 r;
@@ -24,7 +23,8 @@ typedef struct
     u8 b;
 } Color256RGB;
 
-typedef enum {
+typedef enum
+{
     GIF87a,
     GIF89a
 } GIFVersion;
@@ -72,8 +72,8 @@ typedef struct
     u8 current_bit_index;
 } BitArray;
 
-void
-bit_array_init(BitArray* bitArray, u8* buffer);
+BitArray
+bit_array_init(u8* buffer);
 
 void
 bit_array_push(BitArray* bit_array, u16 data, u8 bit_amount);

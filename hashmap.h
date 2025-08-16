@@ -32,11 +32,11 @@ typedef struct
 u16
 hash_str(char* key);
 
+Hashmap
+hashmap_init(size_t capacity, Allocator* allocator);
+
 void
 hashmap_clear(Hashmap* hashmap);
-
-Hashmap
-hashmap_make(size_t capacity, Allocator* allocator);
 
 bool
 hashmap_insert(Hashmap* hashmap, char* key, void* value);

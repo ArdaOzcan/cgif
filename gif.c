@@ -101,12 +101,14 @@ gif_write_trailer(Arena* arena)
     arena_copy_size(arena, &trailer, 1);
 }
 
-void
-bit_array_init(BitArray* bitArray, u8* buffer)
+BitArray
+bit_array_init(u8* buffer)
 {
-    bitArray->array = buffer;
-    bitArray->current_bit_index = 0;
-    bitArray->current_byte = 0;
+    BitArray bit_array;
+    bit_array.array = buffer;
+    bit_array.current_bit_index = 0;
+    bit_array.current_byte = 0;
+    return bit_array;
 }
 
 void
@@ -147,7 +149,7 @@ bit_array_pad_last_byte(BitArray* bitArray)
 }
 
 void
-lzw_dict_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
+lzw_hashmap_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
 {
     for (u16 i = 0; i <= eoi_code; i++) {
         char* key = make(char, 2, allocator);
@@ -166,16 +168,14 @@ gif_compress_lzw(Allocator* allocator,
                  size_t indices_len,
                  size_t* compressed_len)
 {
-    Hashmap hashmap = hashmap_make(LZW_DICT_MAX_CAP, allocator);
+    Hashmap hashmap = hashmap_init(LZW_DICT_MAX_CAP, allocator);
     const size_t clear_code = 1 << min_code_size;
     const size_t eoi_code = clear_code + 1;
 
-    lzw_dict_reset(&hashmap, eoi_code, allocator);
+    lzw_hashmap_reset(&hashmap, eoi_code, allocator);
 
-    BitArray bit_array;
-
-    u8* bit_array_buf = array_init(sizeof(u8), BIT_ARRAY_MIN_CAP, allocator);
-    bit_array_init(&bit_array, bit_array_buf);
+    u8* bit_array_buf = array(u8, BIT_ARRAY_MIN_CAP, allocator);
+    BitArray bit_array = bit_array_init(bit_array_buf);
 
     // Starts from min + 1 because min_code_size is for colors only
     // special codes (clear code and end of instruction code) are
@@ -183,55 +183,46 @@ gif_compress_lzw(Allocator* allocator,
     u8 code_size = min_code_size + 1;
     bit_array_push(&bit_array, clear_code, code_size);
 
-    char* input_buf = array_init(sizeof(char), INPUT_BUFFER_CAP, allocator);
-    array_append(input_buf, '0' + indices[0]);
-    input_buf[array_len(input_buf)] = '\0';
+    char* input_buf = string_init(INPUT_BUFFER_CAP, allocator);
+    string_append_c(input_buf, '0' + indices[0]);
 
-    char* appended = array_init(sizeof(char), INPUT_BUFFER_CAP, allocator);
+    char* appended = string_init(INPUT_BUFFER_CAP, allocator);
     for (size_t i = 1; i < indices_len; i++) {
-        char K = '0' + indices[i];
+        char k = '0' + indices[i];
 
-        array_len(appended) = array_len(input_buf);
-        memcpy(appended, input_buf, array_len(input_buf));
-
-        array_append(appended, K);
-        appended[array_len(appended)] = '\0';
+        string_copy(appended, input_buf);
+        string_append_c(appended, k);
 
         char* result = hashmap_get(&hashmap, appended);
-        // printf("INPUT: %s\n", input_buf);
+        printf("INPUT: %s\n", input_buf);
 
         if (result != NULL) {
-            array_append(input_buf, K);
-            input_buf[array_len(input_buf)] = '\0';
+            string_append_c(input_buf, k);
         } else {
-            char* key = make(char, array_len(appended) + 1, allocator);
-            memcpy(key, appended, array_len(appended));
-            key[array_len(appended)] = '\0';
+            char* key =
+              string_from_cstr(appended, array_len(appended), allocator);
 
             u16* val = make(u16, 1, allocator);
             *val = hashmap.length;
 
             hashmap_insert(&hashmap, key, val);
-            // printf("'%s': %d\n", key, *val);
+            printf("'%s': %d\n", key, *val);
 
-            // Temporarily change last character
-            // because strings are null terminated...
             u16* idx = hashmap_get(&hashmap, input_buf);
 
             assert(idx != NULL);
 
             bit_array_push(&bit_array, *idx, code_size);
 
-            input_buf[0] = K;
-            input_buf[1] = '\0';
-            array_len(input_buf) = 1;
+            string_clear(input_buf);
+            string_append_c(input_buf, k);
 
             if (hashmap.length >= LZW_DICT_MAX_CAP) {
-                bit_array_push(&bit_array, clear_code, code_size);
-                code_size = min_code_size + 1;
-                hashmap_clear(&hashmap);
                 printf("---CLEAR---\n");
-                lzw_dict_reset(&hashmap, eoi_code, allocator);
+                bit_array_push(&bit_array, clear_code, code_size);
+                hashmap_clear(&hashmap);
+                lzw_hashmap_reset(&hashmap, eoi_code, allocator);
+                code_size = min_code_size + 1;
             } else if (hashmap.length > (1 << code_size)) {
                 code_size++;
             }
@@ -270,9 +261,8 @@ gif_export(GIFMetadata metadata,
            const u8* indices,
            const char* out_path)
 {
-    Arena gif_data;
     void* gif_base = malloc(GIF_ALLOC_SIZE);
-    arena_init(&gif_data, gif_base, GIF_ALLOC_SIZE);
+    Arena gif_data = arena_init(gif_base, GIF_ALLOC_SIZE);
 
     gif_write_header(&gif_data, metadata.version);
     gif_write_logical_screen_descriptor(&gif_data,
@@ -296,9 +286,8 @@ gif_export(GIFMetadata metadata,
                              metadata.height,
                              metadata.local_color_table);
 
-    Arena lzw_arena;
     void* lzw_base = malloc(LZW_ALLOC_SIZE);
-    arena_init(&lzw_arena, lzw_base, LZW_ALLOC_SIZE);
+    Arena lzw_arena = arena_init(lzw_base, LZW_ALLOC_SIZE);
     Allocator lzw_alloc = arena_alloc_init(&lzw_arena);
 
     size_t compressed_len = 0;
