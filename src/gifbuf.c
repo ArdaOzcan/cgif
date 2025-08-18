@@ -2,10 +2,10 @@
 #include <gifbuf/gifbuf.h>
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
 #define LZW_ALLOC_SIZE 256 * KILOBYTE
@@ -18,13 +18,13 @@
 
 #define BIT_ARRAY_MIN_CAP 2 * KILOBYTE
 
-#define get_lsb_mask(length) ((1 << length) - 1)
+#define LSB_MASK(length) ((1 << (length)) - 1)
 
 typedef struct
 {
     u8* array;
-    u8 current_byte;
-    u8 current_bit_index;
+    u8 next_byte;
+    u8 current_bit_idx;
 } BitArray;
 
 BitArray
@@ -32,9 +32,46 @@ bit_array_init(u8* buffer)
 {
     BitArray bit_array;
     bit_array.array = buffer;
-    bit_array.current_bit_index = 0;
-    bit_array.current_byte = 0;
+    bit_array.current_bit_idx = 0;
+    bit_array.next_byte = 0;
     return bit_array;
+}
+
+#define min(a, b)                                                              \
+    ({                                                                         \
+        __typeof__(a) _a = (a);                                                \
+        __typeof__(b) _b = (b);                                                \
+        _a < _b ? _a : _b;                                                     \
+    })
+
+// Return value is always aligned to the least significant bit.
+u32
+bit_array_read(u8* bytes,
+               size_t start_byte_idx,
+               u8 start_bit_idx,
+               u8 bit_amount)
+{
+    assert(start_bit_idx < 8);
+    assert(bit_amount > 0);
+    u32 result = 0;
+    size_t byte_idx = start_byte_idx;
+
+    u8 bits_read = 0;
+    u8 bits_in_first_byte = min(8 - start_bit_idx, bit_amount);
+
+    result |= (bytes[byte_idx] >> start_bit_idx) & LSB_MASK(bits_in_first_byte);
+    bits_read += bits_in_first_byte;
+    byte_idx++;
+
+    while (bit_amount - bits_read > 8) {
+        result |= bytes[byte_idx] << bits_read;
+        bits_read += 8;
+        byte_idx++;
+    }
+
+    result |= (bytes[byte_idx] & LSB_MASK(bit_amount - bits_read)) << bits_read;
+
+    return result;
 }
 
 void
@@ -43,35 +80,34 @@ bit_array_push(BitArray* bit_array, u16 data, u8 bit_amount)
     u8 bits_left = bit_amount;
     u8 split_bit_amount = 0;
     u8 mask = 0;
-    while (bit_array->current_bit_index + bits_left > 8) {
-        split_bit_amount = 8 - bit_array->current_bit_index;
+    while (bit_array->current_bit_idx + bits_left > 8) {
+        split_bit_amount = 8 - bit_array->current_bit_idx;
 
-        mask = get_lsb_mask(split_bit_amount);
-        bit_array->current_byte |= (data & mask)
-                                   << bit_array->current_bit_index;
-        bit_array->current_bit_index += split_bit_amount;
+        mask = LSB_MASK(split_bit_amount);
+        bit_array->next_byte |= (data & mask) << bit_array->current_bit_idx;
+        bit_array->current_bit_idx += split_bit_amount;
         bits_left -= split_bit_amount;
         data >>= split_bit_amount;
 
-        array_append(bit_array->array, bit_array->current_byte);
+        array_append(bit_array->array, bit_array->next_byte);
         // printf("%zu: 0x%02x\n",
         //        array_len(bit_array->array),
         //        bit_array->current_byte);
-        bit_array->current_byte = 0;
-        bit_array->current_bit_index = 0;
+        bit_array->next_byte = 0;
+        bit_array->current_bit_idx = 0;
     }
 
-    mask = get_lsb_mask(bits_left);
-    bit_array->current_byte |= (data & mask) << bit_array->current_bit_index;
-    bit_array->current_bit_index += bits_left;
+    mask = LSB_MASK(bits_left);
+    bit_array->next_byte |= (data & mask) << bit_array->current_bit_idx;
+    bit_array->current_bit_idx += bits_left;
 }
 
 void
-bit_array_pad_last_byte(BitArray* bitArray)
+bit_array_pad_last_byte(BitArray* bit_array)
 {
-    array_append(bitArray->array, bitArray->current_byte);
-    bitArray->current_byte = 0;
-    bitArray->current_bit_index = 0;
+    array_append(bit_array->array, bit_array->next_byte);
+    bit_array->next_byte = 0;
+    bit_array->current_bit_idx = 0;
 }
 
 void
@@ -85,6 +121,17 @@ lzw_hashmap_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
         *val = i;
         hashmap_insert(hashmap, key, val);
     }
+}
+
+u8*
+gif_decompress_lzw(const u8* bytes, u8 min_code_size, Allocator* allocator)
+{
+    Hashmap hashmap = hashmap_init(LZW_DICT_MAX_CAP, allocator);
+    const size_t clear_code = 1 << min_code_size;
+    const size_t eoi_code = clear_code + 1;
+
+    lzw_hashmap_reset(&hashmap, eoi_code, allocator);
+    return NULL;
 }
 
 u8*
@@ -207,7 +254,7 @@ gif_write_logical_screen_descriptor(Arena* gif_data,
 void
 gif_write_global_color_table(Arena* gif_data, const Color256RGB* colors)
 {
-    u8 N = ((u8*)gif_data->base)[10] & get_lsb_mask(3);
+    u8 N = ((u8*)gif_data->base)[10] & LSB_MASK(3);
     u8 colorAmount = 1 << (N + 1);
     for (u8 i = 0; i < colorAmount; i++) {
         arena_copy_size(gif_data, &colors[i], sizeof(Color256RGB));

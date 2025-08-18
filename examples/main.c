@@ -22,5 +22,6 @@ main(void)
                                           .has_gct = true };
 
     gif_export(metadata, cat256_colors, cat256_indices, "out/out256_test.gif");
+
     return 0;
 }

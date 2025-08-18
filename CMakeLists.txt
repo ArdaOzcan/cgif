@@ -7,11 +7,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-# Global options (warnings + debug)
-add_compile_options(-Wall -Werror -g)
+add_compile_options(-Werror -g)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# --- Dependencies (munit) ---
 FetchContent_Declare(
     munit
     GIT_REPOSITORY https://github.com/nemequ/munit.git
@@ -20,7 +18,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(munit)
 
-# --- Source structure ---
 set(SRC_DIR ${CMAKE_SOURCE_DIR})
 
 set(LIB_FILES
