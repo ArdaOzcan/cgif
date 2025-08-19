@@ -67,7 +67,7 @@ assert_binary_files_equal(const char* fp1, const char* fp2)
 }
 
 static MunitResult
-test_cat_256(const MunitParameter params[], void* user_data_or_fixture)
+test_encode_256(const MunitParameter params[], void* user_data_or_fixture)
 {
     GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
                                           .background = 0x0f,
@@ -91,7 +91,7 @@ test_cat_256(const MunitParameter params[], void* user_data_or_fixture)
 }
 
 static MunitResult
-test_cat_64(const MunitParameter params[], void* user_data_or_fixture)
+test_encode_64(const MunitParameter params[], void* user_data_or_fixture)
 {
     GIFMetadata metadata = (GIFMetadata){ .version = GIF89a,
                                           .background = 0x10,
@@ -115,7 +115,7 @@ test_cat_64(const MunitParameter params[], void* user_data_or_fixture)
 }
 
 static MunitResult
-test_cat_16(const MunitParameter params[], void* user_data_or_fixture)
+test_encode_16(const MunitParameter params[], void* user_data_or_fixture)
 {
     GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
                                           .background = 0x0f,
@@ -138,26 +138,40 @@ test_cat_16(const MunitParameter params[], void* user_data_or_fixture)
     return MUNIT_OK;
 }
 
+static MunitResult
+test_decode_16(const MunitParameter params[], void* user_data_or_fixture)
+{
+    return MUNIT_FAIL;
+}
+
 static MunitTest tests[] = {
     {
-      "test_cat_16",          /* name */
-      test_cat_16,            /* test */
+      "test_encode_16",          /* name */
+      test_encode_16,            /* test */
       NULL,                   /* setup */
       NULL,                   /* tear_down */
       MUNIT_TEST_OPTION_NONE, /* options */
       NULL                    /* parameters */
     },
     {
-      "test_cat_64",          /* name */
-      test_cat_64,            /* test */
+      "test_decode_16",          /* name */
+      test_decode_16,            /* test */
       NULL,                   /* setup */
       NULL,                   /* tear_down */
       MUNIT_TEST_OPTION_NONE, /* options */
       NULL                    /* parameters */
     },
     {
-      "test_cat_256",         /* name */
-      test_cat_256,           /* test */
+      "test_encode_64",          /* name */
+      test_encode_64,            /* test */
+      NULL,                   /* setup */
+      NULL,                   /* tear_down */
+      MUNIT_TEST_OPTION_NONE, /* options */
+      NULL                    /* parameters */
+    },
+    {
+      "test_encode_256",         /* name */
+      test_encode_256,           /* test */
       NULL,                   /* setup */
       NULL,                   /* tear_down */
       MUNIT_TEST_OPTION_NONE, /* options */

@@ -373,14 +373,14 @@ gif_export(GIFMetadata metadata,
         fclose(file);
     }
 
-    printf("GIF Arena used: %.2f%% (%zu/%zu bytes)\n",
+    printf("GIF Arena used: %.2f%% (%zu/%zu KB)\n",
            100.0f * gif_data.used / gif_data.size,
-           gif_data.used,
-           gif_data.size);
-    printf("LZW Arena used: %.2f%% (%zu/%zu bytes)\n",
+           gif_data.used / KILOBYTE,
+           gif_data.size / KILOBYTE);
+    printf("LZW Arena used: %.2f%% (%zu/%zu KB)\n",
            100.0f * lzw_arena.used / lzw_arena.size,
-           lzw_arena.used,
-           lzw_arena.size);
+           lzw_arena.used / KILOBYTE,
+           lzw_arena.size / KILOBYTE);
     printf("\n");
     free(gif_base);
     free(lzw_base);
