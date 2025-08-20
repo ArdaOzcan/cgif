@@ -37,12 +37,14 @@ bit_array_init(u8* buffer)
     return bit_array;
 }
 
+#ifndef min
 #define min(a, b)                                                              \
     ({                                                                         \
         __typeof__(a) _a = (a);                                                \
         __typeof__(b) _b = (b);                                                \
         _a < _b ? _a : _b;                                                     \
     })
+#endif
 
 // Return value is always aligned to the least significant bit.
 u32
@@ -367,7 +369,7 @@ gif_export(GIFMetadata metadata,
       &gif_data, metadata.min_code_size, compressed, compressed_len);
     gif_write_trailer(&gif_data);
 
-    FILE* file = fopen(out_path, "w");
+    FILE* file = fopen(out_path, "wb");
     if (file) {
         fwrite(gif_data.base, sizeof(char), gif_data.used, file);
         fclose(file);
