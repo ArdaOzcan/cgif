@@ -218,10 +218,10 @@ gif_write_header(VArena* gif_data, GIFVersion version)
 {
     switch (version) {
         case GIF87a:
-            varena_copy_size(gif_data, "GIF87a", 6);
+            varena_push_copy(gif_data, "GIF87a", 6);
             break;
         case GIF89a:
-            varena_copy_size(gif_data, "GIF89a", 6);
+            varena_push_copy(gif_data, "GIF89a", 6);
             break;
     }
 }
@@ -231,24 +231,24 @@ gif_write_logical_screen_descriptor(VArena* gif_data,
                                     u16 width,
                                     u16 height,
                                     bool gct,
-                                    u8 colorResolution,
+                                    u8 color_resolution,
                                     bool sort,
-                                    u8 gctSize,
+                                    u8 gct_size,
                                     u8 background,
-                                    u8 pixelAspectRatio)
+                                    u8 pixel_aspect_ratio)
 {
-    varena_copy_size(gif_data, &width, sizeof(u16));
-    varena_copy_size(gif_data, &height, sizeof(u16));
+    varena_push_copy(gif_data, &width, sizeof(u16));
+    varena_push_copy(gif_data, &height, sizeof(u16));
 
     u8 packed = 0;
-    packed |= gct << 7;                     // 1000 0000
-    packed |= (colorResolution & 0x7) << 4; // 0111 0000
-    packed |= sort << 3;                    // 0000 1000
-    packed |= (gctSize & 0x7);              // 0000 0111
+    packed |= gct << 7;                      // 1000 0000
+    packed |= (color_resolution & 0x7) << 4; // 0111 0000
+    packed |= sort << 3;                     // 0000 1000
+    packed |= (gct_size & 0x7);              // 0000 0111
 
-    varena_copy_size(gif_data, &packed, sizeof(u8));
-    varena_copy_size(gif_data, &background, sizeof(u8));
-    varena_copy_size(gif_data, &pixelAspectRatio, sizeof(u8));
+    varena_push_copy(gif_data, &packed, sizeof(u8));
+    varena_push_copy(gif_data, &background, sizeof(u8));
+    varena_push_copy(gif_data, &pixel_aspect_ratio, sizeof(u8));
 }
 
 void
@@ -257,7 +257,7 @@ gif_write_global_color_table(VArena* gif_data, const Color256RGB* colors)
     u8 N = ((u8*)gif_data->base)[10] & LSB_MASK(3);
     u8 colorAmount = 1 << (N + 1);
     for (u8 i = 0; i < colorAmount; i++) {
-        varena_copy_size(gif_data, &colors[i], sizeof(Color256RGB));
+        varena_push_copy(gif_data, &colors[i], sizeof(Color256RGB));
     }
 }
 
@@ -270,7 +270,7 @@ gif_write_img_extension(VArena* gif_data)
     };
 
     for (int i = 0; i < sizeof(bytes) / sizeof(u8); i++) {
-        varena_copy_size(gif_data, &bytes[i], sizeof(u8));
+        varena_push_copy(gif_data, &bytes[i], sizeof(u8));
     }
 }
 
@@ -282,12 +282,12 @@ gif_write_img_descriptor(VArena* gif_data,
                          u16 height,
                          u8 local_color_table)
 {
-    varena_copy_size(gif_data, ",", sizeof(char));
-    varena_copy_size(gif_data, &left, sizeof(u16));
-    varena_copy_size(gif_data, &top, sizeof(u16));
-    varena_copy_size(gif_data, &width, sizeof(u16));
-    varena_copy_size(gif_data, &height, sizeof(u16));
-    varena_copy_size(gif_data, &local_color_table, sizeof(u8));
+    varena_push_copy(gif_data, ",", sizeof(char));
+    varena_push_copy(gif_data, &left, sizeof(u16));
+    varena_push_copy(gif_data, &top, sizeof(u16));
+    varena_push_copy(gif_data, &width, sizeof(u16));
+    varena_push_copy(gif_data, &height, sizeof(u16));
+    varena_push_copy(gif_data, &local_color_table, sizeof(u8));
 }
 
 void
@@ -296,29 +296,29 @@ gif_write_img_data(VArena* gif_data,
                    u8* bytes,
                    size_t bytes_length)
 {
-    varena_copy_size(gif_data, &lzw_min_code, sizeof(u8));
+    varena_push_copy(gif_data, &lzw_min_code, sizeof(u8));
 
     size_t bytes_left = bytes_length;
     while (bytes_left) {
         u8 block_length = bytes_left >= GIF_MAX_BLOCK_LENGTH
                             ? GIF_MAX_BLOCK_LENGTH
                             : bytes_left;
-        varena_copy_size(gif_data, &block_length, sizeof(u8));
-        varena_copy_size(gif_data,
-                        &bytes[bytes_length - bytes_left],
-                        block_length * sizeof(u8));
+        varena_push_copy(gif_data, &block_length, sizeof(u8));
+        varena_push_copy(gif_data,
+                         &bytes[bytes_length - bytes_left],
+                         block_length * sizeof(u8));
         bytes_left -= block_length;
     }
 
     const u8 terminator = '\0';
-    varena_copy_size(gif_data, &terminator, sizeof(u8));
+    varena_push_copy(gif_data, &terminator, sizeof(u8));
 }
 
 void
-gif_write_trailer(VArena * gif_data)
+gif_write_trailer(VArena* gif_data)
 {
     const u8 trailer = 0x3B;
-    varena_copy_size(gif_data, &trailer, 1);
+    varena_push_copy(gif_data, &trailer, 1);
 }
 
 void
@@ -328,7 +328,7 @@ gif_export(GIFMetadata metadata,
            const char* out_path)
 {
     VArena gif_data;
-    varena_init_ex(&gif_data, GIF_ALLOC_SIZE, SYSTEM_PAGE_SIZE, 1);
+    varena_init_ex(&gif_data, GIF_ALLOC_SIZE, system_page_size(), 1);
 
     gif_write_header(&gif_data, metadata.version);
     gif_write_logical_screen_descriptor(&gif_data,
@@ -353,7 +353,7 @@ gif_export(GIFMetadata metadata,
                              metadata.local_color_table);
 
     VArena lzw_arena;
-    varena_init_ex(&lzw_arena, LZW_ALLOC_SIZE, SYSTEM_PAGE_SIZE, 1);
+    varena_init(&lzw_arena, LZW_ALLOC_SIZE);
     Allocator lzw_alloc = varena_allocator(&lzw_arena);
 
     size_t compressed_len = 0;

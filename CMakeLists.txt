@@ -11,6 +11,8 @@ set(FETCHCONTENT_QUIET FALSE)
 add_compile_options(-Werror -g)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(BUILD_EXAMPLES OFF CACHE BOOL "Disable building examples")
+
 FetchContent_Declare(
     ccore
     GIT_REPOSITORY https://github.com/ArdaOzcan/ccore.git
@@ -53,9 +55,9 @@ target_include_directories(gifbuf
 )
 target_link_libraries(gifbuf PUBLIC ccore)
 
-add_executable(example ${MAIN_FILE})
-target_include_directories(example PRIVATE ${CMAKE_SOURCE_DIR}/include)
-target_link_libraries(example PRIVATE gifbuf ccore)
+add_executable(gifbuf_example ${MAIN_FILE})
+target_include_directories(gifbuf_example PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(gifbuf_example PRIVATE gifbuf ccore)
 
 add_executable(test ${TEST_FILES})
 target_include_directories(test PRIVATE ${munit_SOURCE_DIR})
