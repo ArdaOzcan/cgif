@@ -1,4 +1,4 @@
-#include "core.h"
+#include "ccore.h"
 #include <gifbuf/gifbuf.h>
 
 #include <assert.h>
@@ -8,7 +8,7 @@
 #include <string.h>
 
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
-#define LZW_ALLOC_SIZE 256 * KILOBYTE
+#define LZW_ALLOC_SIZE 1 * MEGABYTE
 
 #define GIF_MAX_BLOCK_LENGTH 254
 #define INPUT_BUFFER_CAP 256
@@ -214,20 +214,20 @@ gif_compress_lzw(Allocator* allocator,
 }
 
 void
-gif_write_header(Arena* gif_data, GIFVersion version)
+gif_write_header(VArena* gif_data, GIFVersion version)
 {
     switch (version) {
         case GIF87a:
-            arena_copy_size(gif_data, "GIF87a", 6);
+            varena_copy_size(gif_data, "GIF87a", 6);
             break;
         case GIF89a:
-            arena_copy_size(gif_data, "GIF89a", 6);
+            varena_copy_size(gif_data, "GIF89a", 6);
             break;
     }
 }
 
 void
-gif_write_logical_screen_descriptor(Arena* gif_data,
+gif_write_logical_screen_descriptor(VArena* gif_data,
                                     u16 width,
                                     u16 height,
                                     bool gct,
@@ -237,8 +237,8 @@ gif_write_logical_screen_descriptor(Arena* gif_data,
                                     u8 background,
                                     u8 pixelAspectRatio)
 {
-    arena_copy_size(gif_data, &width, sizeof(u16));
-    arena_copy_size(gif_data, &height, sizeof(u16));
+    varena_copy_size(gif_data, &width, sizeof(u16));
+    varena_copy_size(gif_data, &height, sizeof(u16));
 
     u8 packed = 0;
     packed |= gct << 7;                     // 1000 0000
@@ -246,23 +246,23 @@ gif_write_logical_screen_descriptor(Arena* gif_data,
     packed |= sort << 3;                    // 0000 1000
     packed |= (gctSize & 0x7);              // 0000 0111
 
-    arena_copy_size(gif_data, &packed, sizeof(u8));
-    arena_copy_size(gif_data, &background, sizeof(u8));
-    arena_copy_size(gif_data, &pixelAspectRatio, sizeof(u8));
+    varena_copy_size(gif_data, &packed, sizeof(u8));
+    varena_copy_size(gif_data, &background, sizeof(u8));
+    varena_copy_size(gif_data, &pixelAspectRatio, sizeof(u8));
 }
 
 void
-gif_write_global_color_table(Arena* gif_data, const Color256RGB* colors)
+gif_write_global_color_table(VArena* gif_data, const Color256RGB* colors)
 {
     u8 N = ((u8*)gif_data->base)[10] & LSB_MASK(3);
     u8 colorAmount = 1 << (N + 1);
     for (u8 i = 0; i < colorAmount; i++) {
-        arena_copy_size(gif_data, &colors[i], sizeof(Color256RGB));
+        varena_copy_size(gif_data, &colors[i], sizeof(Color256RGB));
     }
 }
 
 void
-gif_write_img_extension(Arena* gif_data)
+gif_write_img_extension(VArena* gif_data)
 {
     // Dummy bytes for now
     u8 bytes[] = {
@@ -270,55 +270,55 @@ gif_write_img_extension(Arena* gif_data)
     };
 
     for (int i = 0; i < sizeof(bytes) / sizeof(u8); i++) {
-        arena_copy_size(gif_data, &bytes[i], sizeof(u8));
+        varena_copy_size(gif_data, &bytes[i], sizeof(u8));
     }
 }
 
 void
-gif_write_img_descriptor(Arena* gif_data,
+gif_write_img_descriptor(VArena* gif_data,
                          u16 left,
                          u16 top,
                          u16 width,
                          u16 height,
                          u8 local_color_table)
 {
-    arena_copy_size(gif_data, ",", sizeof(char));
-    arena_copy_size(gif_data, &left, sizeof(u16));
-    arena_copy_size(gif_data, &top, sizeof(u16));
-    arena_copy_size(gif_data, &width, sizeof(u16));
-    arena_copy_size(gif_data, &height, sizeof(u16));
-    arena_copy_size(gif_data, &local_color_table, sizeof(u8));
+    varena_copy_size(gif_data, ",", sizeof(char));
+    varena_copy_size(gif_data, &left, sizeof(u16));
+    varena_copy_size(gif_data, &top, sizeof(u16));
+    varena_copy_size(gif_data, &width, sizeof(u16));
+    varena_copy_size(gif_data, &height, sizeof(u16));
+    varena_copy_size(gif_data, &local_color_table, sizeof(u8));
 }
 
 void
-gif_write_img_data(Arena* gif_data,
+gif_write_img_data(VArena* gif_data,
                    u8 lzw_min_code,
                    u8* bytes,
                    size_t bytes_length)
 {
-    arena_copy_size(gif_data, &lzw_min_code, sizeof(u8));
+    varena_copy_size(gif_data, &lzw_min_code, sizeof(u8));
 
     size_t bytes_left = bytes_length;
     while (bytes_left) {
         u8 block_length = bytes_left >= GIF_MAX_BLOCK_LENGTH
                             ? GIF_MAX_BLOCK_LENGTH
                             : bytes_left;
-        arena_copy_size(gif_data, &block_length, sizeof(u8));
-        arena_copy_size(gif_data,
+        varena_copy_size(gif_data, &block_length, sizeof(u8));
+        varena_copy_size(gif_data,
                         &bytes[bytes_length - bytes_left],
                         block_length * sizeof(u8));
         bytes_left -= block_length;
     }
 
     const u8 terminator = '\0';
-    arena_copy_size(gif_data, &terminator, sizeof(u8));
+    varena_copy_size(gif_data, &terminator, sizeof(u8));
 }
 
 void
-gif_write_trailer(Arena* arena)
+gif_write_trailer(VArena * gif_data)
 {
     const u8 trailer = 0x3B;
-    arena_copy_size(arena, &trailer, 1);
+    varena_copy_size(gif_data, &trailer, 1);
 }
 
 void
@@ -327,8 +327,8 @@ gif_export(GIFMetadata metadata,
            const u8* indices,
            const char* out_path)
 {
-    void* gif_base = malloc(GIF_ALLOC_SIZE);
-    Arena gif_data = arena_init(gif_base, GIF_ALLOC_SIZE);
+    VArena gif_data;
+    varena_init_ex(&gif_data, GIF_ALLOC_SIZE, SYSTEM_PAGE_SIZE, 1);
 
     gif_write_header(&gif_data, metadata.version);
     gif_write_logical_screen_descriptor(&gif_data,
@@ -352,9 +352,9 @@ gif_export(GIFMetadata metadata,
                              metadata.height,
                              metadata.local_color_table);
 
-    void* lzw_base = malloc(LZW_ALLOC_SIZE);
-    Arena lzw_arena = arena_init(lzw_base, LZW_ALLOC_SIZE);
-    Allocator lzw_alloc = arena_alloc_init(&lzw_arena);
+    VArena lzw_arena;
+    varena_init_ex(&lzw_arena, LZW_ALLOC_SIZE, SYSTEM_PAGE_SIZE, 1);
+    Allocator lzw_alloc = varena_allocator(&lzw_arena);
 
     size_t compressed_len = 0;
     u8* compressed = gif_compress_lzw(&lzw_alloc,
@@ -373,15 +373,13 @@ gif_export(GIFMetadata metadata,
         fclose(file);
     }
 
-    printf("GIF Arena used: %.2f%% (%zu/%zu KB)\n",
+    printf("GIF Arena used: %.2f%% (%llu/%llu KB)\n",
            100.0f * gif_data.used / gif_data.size,
            gif_data.used / KILOBYTE,
            gif_data.size / KILOBYTE);
-    printf("LZW Arena used: %.2f%% (%zu/%zu KB)\n",
+    printf("LZW Arena used: %.2f%% (%llu/%llu KB)\n",
            100.0f * lzw_arena.used / lzw_arena.size,
            lzw_arena.used / KILOBYTE,
            lzw_arena.size / KILOBYTE);
     printf("\n");
-    free(gif_base);
-    free(lzw_base);
 }
