@@ -1,11 +1,11 @@
-#include "ccore.h"
-#include <gifbuf/gifbuf.h>
-
 #include <assert.h>
+#include <gifbuf/gifbuf.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "ccore.h"
 
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
 #define LZW_ALLOC_SIZE 1 * MEGABYTE
@@ -48,7 +48,7 @@ bit_array_init(u8* buffer)
 
 // Return value is always aligned to the least significant bit.
 u32
-bit_array_read(u8* bytes,
+bit_array_read(const u8* bytes,
                size_t start_byte_idx,
                u8 start_bit_idx,
                u8 bit_amount)
@@ -125,15 +125,107 @@ lzw_hashmap_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
     }
 }
 
-u8*
-gif_decompress_lzw(const u8* bytes, u8 min_code_size, Allocator* allocator)
+void
+gif_decompress_lzw(const u8* bytes,
+                   u8 min_code_size,
+                   u8* indices,
+                   Allocator* allocator)
 {
-    Hashmap hashmap = hashmap_init(LZW_DICT_MAX_CAP, allocator);
     const size_t clear_code = 1 << min_code_size;
     const size_t eoi_code = clear_code + 1;
+    const char** code_table = array(const char*, 128, allocator);
 
-    lzw_hashmap_reset(&hashmap, eoi_code, allocator);
-    return NULL;
+    for (int i = 0; i <= eoi_code; i++) {
+        char* str = make(char, 2, allocator);
+        str[0] = '0' + i;
+        str[1] = '\0';
+        array_append(code_table, str);
+    }
+
+    // lzw_hashmap_reset(&hashmap, eoi_code, allocator);
+
+    u8 code_size = min_code_size + 1;
+    size_t start_byte_idx = 0;
+    u8 start_bit_idx = 0;
+
+    // Read initial clear code
+    u16 code = bit_array_read(bytes, start_byte_idx, start_bit_idx, code_size);
+    start_bit_idx += code_size;
+    while (start_bit_idx >= 8) {
+        start_byte_idx++;
+        start_bit_idx %= 8;
+    }
+
+    if (code != clear_code) {
+        printf("First byte should be the clear code!!\n");
+    }
+
+    code = bit_array_read(bytes, start_byte_idx, start_bit_idx, code_size);
+    start_bit_idx += code_size;
+    while (start_bit_idx >= 8) {
+        start_byte_idx++;
+        start_bit_idx %= 8;
+    }
+    size_t indices_len = 0;
+    for (int j = 0; code_table[code][j] != '\0'; j++) {
+        indices[indices_len++] = code_table[code][j] - '0';
+    }
+
+    u8 previous_code = code;
+    while ((code = bit_array_read(
+              bytes, start_byte_idx, start_bit_idx, code_size)) != eoi_code) {
+
+        printf("Code %u (%b from byte 0x%02x 0b%08b) was read at %zu:%u. ",
+               code,
+               code,
+               bytes[start_byte_idx],
+               bytes[start_byte_idx],
+               start_byte_idx,
+               start_bit_idx);
+
+        start_bit_idx += code_size;
+        while (start_bit_idx >= 8) {
+            start_byte_idx++;
+            start_bit_idx %= 8;
+        }
+        printf("Location is now %zu:%u.\n", start_byte_idx, start_bit_idx);
+
+        char k = 0;
+        if (code < array_len(code_table)) {
+            k = code_table[code][0];
+            printf("%hu was in code table.\n", code);
+        } else {
+            k = code_table[previous_code][0];
+            printf("%hu was not in code table.\n", code);
+        }
+
+        size_t previous_code_length = strlen(code_table[previous_code]);
+        char* new_entry = make(char, previous_code_length + 2, allocator);
+        memcpy(new_entry, code_table[previous_code], previous_code_length);
+        new_entry[previous_code_length] = k;
+        new_entry[previous_code_length + 1] = '\0';
+
+        if (code < array_len(code_table)) {
+            for (int j = 0; code_table[code][j] != '\0'; j++) {
+                indices[indices_len++] = code_table[code][j] - '0';
+                printf("Added %d to indices\n", indices[indices_len - 1]);
+            }
+        } else {
+            for (int j = 0; new_entry[j] != '\0'; j++) {
+                indices[indices_len++] = new_entry[j] - '0';
+                printf("Added %d to indices\n", indices[indices_len - 1]);
+            }
+        }
+
+        array_append(code_table, new_entry);
+        if (array_len(code_table) >= (1 << code_size)) {
+            code_size++;
+        }
+        printf("Added %s to code table. (New size: %zu)\n",
+               new_entry,
+               array_len(code_table));
+        previous_code = code;
+    }
 }
 
 u8*
@@ -169,23 +261,26 @@ gif_compress_lzw(Allocator* allocator,
         dynstr_append_c(appended, k);
 
         char* result = hashmap_get(&hashmap, appended);
-        // printf("INPUT: %s\n", input_buf);
 
         if (result != NULL) {
             dynstr_append_c(input_buf, k);
+            printf("INPUT: %s\n", input_buf);
         } else {
             char* key = cstr_from_dynstr(appended, allocator);
             u16* val = make(u16, 1, allocator);
             *val = hashmap.length;
 
             hashmap_insert(&hashmap, key, val);
-            // printf("'%s': %d\n", key, *val);
+            printf("'%s': %d\n", key, *val);
 
             u16* idx = hashmap_get(&hashmap, input_buf);
 
             assert(idx != NULL);
 
             bit_array_push(&bit_array, *idx, code_size);
+            printf("Pushed %b to the bit array for index %d\n",
+                   *idx & LSB_MASK(code_size),
+                   indices[i]);
 
             dynstr_clear(input_buf);
             dynstr_append_c(input_buf, k);
@@ -324,6 +419,17 @@ gif_write_trailer(VArena* gif_data)
 }
 
 void
+gif_import(const u8* file_data, GIFMetadata* metadata, u8* indices)
+{
+    VArena lzw_arena;
+    varena_init(&lzw_arena, 8 * KILOBYTE);
+    Allocator lzw_alloc = varena_allocator(&lzw_arena);
+
+    gif_decompress_lzw(file_data, metadata->min_code_size, indices, &lzw_alloc);
+    varena_destroy(&lzw_arena);
+}
+
+void
 gif_export(GIFMetadata metadata,
            const Color256RGB* colors,
            const u8* indices,
@@ -374,7 +480,6 @@ gif_export(GIFMetadata metadata,
         fwrite(gif_data.base, sizeof(char), gif_data.used, file);
         fclose(file);
     }
-
     printf("GIF Arena used: %.2f%% (%llu/%llu KB)\n",
            100.0f * gif_data.used / gif_data.size,
            gif_data.used / KILOBYTE,
@@ -384,4 +489,7 @@ gif_export(GIFMetadata metadata,
            lzw_arena.used / KILOBYTE,
            lzw_arena.size / KILOBYTE);
     printf("\n");
+
+    varena_destroy(&gif_data);
+    varena_destroy(&lzw_arena);
 }

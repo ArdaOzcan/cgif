@@ -31,6 +31,11 @@ typedef struct
 } GIFMetadata;
 
 void
+gif_import(const uint8_t* file_data,
+           GIFMetadata* metadata,
+           uint8_t* pixels);
+
+void
 gif_export(GIFMetadata metadata,
            const Color256RGB* colors,
            const uint8_t* indices,
