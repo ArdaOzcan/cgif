@@ -1,4 +1,5 @@
 #include "../test/test-images/cat16.h"
+#include "../test/test-images/cat64.h"
 #include "../test/test-images/cat256.h"
 #include <gifbuf/gifbuf.h>
 
@@ -38,37 +39,30 @@ read_file_to_buffer(const char* filename, size_t* file_size)
 int
 main(void)
 {
-    GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
-                                          .background = 0x0f,
-                                          .color_resolution = 6,
+    GIFMetadata metadata = (GIFMetadata){ .version = GIF89a,
+                                          .background = 0x10,
+                                          .color_resolution = 2,
                                           .sort = 0,
                                           .local_color_table = 0,
                                           .pixel_aspect_ratio = 0,
-                                          .min_code_size = 4,
-                                          .gct_size_n = 3,
+                                          .min_code_size = 6,
+                                          .gct_size_n = 5,
                                           .left = 0,
                                           .top = 0,
-                                          .width = 5,
-                                          .height = 5,
-                                          .has_gct = true,
-                                          .image_extension = false };
+                                          .width = 64,
+                                          .height = 64,
+                                          .image_extension = true,
+                                          .has_gct = true };
 
-    // gif_export(metadata, cat16_colors, cat16_indices, "out/out16_test.gif");
-
-    uint8_t out_indices[] = { 0, 1, 2, 3, 4, 5, 6,  7, 7, 0, 15, 15, 4,
-                              5, 6, 7, 7, 0, 1, 15, 4, 5, 6, 7,  0 };
-    gif_export(metadata, cat256_colors, out_indices, "out/test_indices.gif");
+    gif_export(metadata, cat64_colors, cat64_indices, "out/out64_test.gif");
 
     size_t size = 0;
-    unsigned char* bytes = read_file_to_buffer("out/test_indices.gif", &size);
-    uint8_t* in_indices = malloc(metadata.width * metadata.height);
-    size_t indices_length = 0;
+    unsigned char* bytes = read_file_to_buffer("out/out64_test.gif", &size);
+    uint8_t* imported_indices = malloc(metadata.width * metadata.height);
 
-    gif_import(&bytes[73], &metadata, in_indices);
+    gif_import(&bytes[0xe1], &metadata, imported_indices);
 
-    for (int i = 0; i < metadata.width * metadata.height; i++) {
-        printf("%d: %d - %d\n", i, in_indices[i], out_indices[i]);
-    }
+    free(imported_indices);
 
     return 0;
 }

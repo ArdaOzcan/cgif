@@ -175,28 +175,28 @@ gif_decompress_lzw(const u8* bytes,
     while ((code = bit_array_read(
               bytes, start_byte_idx, start_bit_idx, code_size)) != eoi_code) {
 
-        printf("Code %u (%b from byte 0x%02x 0b%08b) was read at %zu:%u. ",
-               code,
-               code,
-               bytes[start_byte_idx],
-               bytes[start_byte_idx],
-               start_byte_idx,
-               start_bit_idx);
+        // printf("Code %u (%b from byte 0x%02x 0b%08b) was read at %zu:%u. ",
+        //        code,
+        //        code,
+        //        bytes[start_byte_idx],
+        //        bytes[start_byte_idx],
+        //        start_byte_idx,
+        //        start_bit_idx);
 
         start_bit_idx += code_size;
         while (start_bit_idx >= 8) {
             start_byte_idx++;
             start_bit_idx %= 8;
         }
-        printf("Location is now %zu:%u.\n", start_byte_idx, start_bit_idx);
+        // printf("Location is now %zu:%u.\n", start_byte_idx, start_bit_idx);
 
         char k = 0;
         if (code < array_len(code_table)) {
             k = code_table[code][0];
-            printf("%hu was in code table.\n", code);
+            // printf("%hu was in code table.\n", code);
         } else {
             k = code_table[previous_code][0];
-            printf("%hu was not in code table.\n", code);
+            // printf("%hu was not in code table.\n", code);
         }
 
         size_t previous_code_length = strlen(code_table[previous_code]);
@@ -208,12 +208,12 @@ gif_decompress_lzw(const u8* bytes,
         if (code < array_len(code_table)) {
             for (int j = 0; code_table[code][j] != '\0'; j++) {
                 indices[indices_len++] = code_table[code][j] - '0';
-                printf("Added %d to indices\n", indices[indices_len - 1]);
+                // printf("Added %d to indices\n", indices[indices_len - 1]);
             }
         } else {
             for (int j = 0; new_entry[j] != '\0'; j++) {
                 indices[indices_len++] = new_entry[j] - '0';
-                printf("Added %d to indices\n", indices[indices_len - 1]);
+                // printf("Added %d to indices\n", indices[indices_len - 1]);
             }
         }
 
@@ -221,9 +221,9 @@ gif_decompress_lzw(const u8* bytes,
         if (array_len(code_table) >= (1 << code_size)) {
             code_size++;
         }
-        printf("Added %s to code table. (New size: %zu)\n",
-               new_entry,
-               array_len(code_table));
+        // printf("Added %s to code table. (New size: %zu)\n",
+        //        new_entry,
+        //        array_len(code_table));
         previous_code = code;
     }
 }
@@ -264,29 +264,29 @@ gif_compress_lzw(Allocator* allocator,
 
         if (result != NULL) {
             dynstr_append_c(input_buf, k);
-            printf("INPUT: %s\n", input_buf);
+            // printf("INPUT: %s\n", input_buf);
         } else {
             char* key = cstr_from_dynstr(appended, allocator);
             u16* val = make(u16, 1, allocator);
             *val = hashmap.length;
 
             hashmap_insert(&hashmap, key, val);
-            printf("'%s': %d\n", key, *val);
+            // printf("'%s': %d\n", key, *val);
 
             u16* idx = hashmap_get(&hashmap, input_buf);
 
             assert(idx != NULL);
 
             bit_array_push(&bit_array, *idx, code_size);
-            printf("Pushed %b to the bit array for index %d\n",
-                   *idx & LSB_MASK(code_size),
-                   indices[i]);
+            // printf("Pushed %b to the bit array for index %d\n",
+            //        *idx & LSB_MASK(code_size),
+            //        indices[i]);
 
             dynstr_clear(input_buf);
             dynstr_append_c(input_buf, k);
 
             if (hashmap.length >= LZW_DICT_MAX_CAP) {
-                printf("---CLEAR---\n");
+                // printf("---CLEAR---\n");
                 bit_array_push(&bit_array, clear_code, code_size);
                 hashmap_clear(&hashmap);
                 lzw_hashmap_reset(&hashmap, eoi_code, allocator);
@@ -422,7 +422,7 @@ void
 gif_import(const u8* file_data, GIFMetadata* metadata, u8* indices)
 {
     VArena lzw_arena;
-    varena_init(&lzw_arena, 8 * KILOBYTE);
+    varena_init(&lzw_arena, LZW_ALLOC_SIZE);
     Allocator lzw_alloc = varena_allocator(&lzw_arena);
 
     gif_decompress_lzw(file_data, metadata->min_code_size, indices, &lzw_alloc);
