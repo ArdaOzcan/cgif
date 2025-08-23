@@ -60,7 +60,8 @@ main(void)
     unsigned char* bytes = read_file_to_buffer("out/out64_test.gif", &size);
     uint8_t* imported_indices = malloc(metadata.width * metadata.height);
 
-    gif_import(&bytes[0xe1], &metadata, imported_indices);
+    size_t indices_length = 0;
+    gif_import(&bytes[0xe1], &metadata, imported_indices, &indices_length);
 
     free(imported_indices);
 

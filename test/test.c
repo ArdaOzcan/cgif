@@ -165,12 +165,11 @@ test_decode_16(const MunitParameter params[], void* user_data_or_fixture)
     unsigned char* bytes = read_file_to_buffer("out/out16_test.gif", &size);
     uint8_t* imported_indices = malloc(metadata.width * metadata.height);
 
-    gif_import(&bytes[73], &metadata, imported_indices);
+    size_t indices_length = 0;
+    gif_import(&bytes[73], &metadata, imported_indices, &indices_length);
 
-    munit_assert_memory_equal(metadata.width * metadata.height *
-                                sizeof(uint8_t),
-                              imported_indices,
-                              cat16_indices);
+    munit_assert_memory_equal(
+      indices_length * sizeof(uint8_t), imported_indices, cat16_indices);
     free(imported_indices);
 
     return MUNIT_OK;
@@ -200,12 +199,16 @@ test_decode_64(const MunitParameter params[], void* user_data_or_fixture)
     unsigned char* bytes = read_file_to_buffer("out/out64_test.gif", &size);
     uint8_t* imported_indices = malloc(metadata.width * metadata.height);
 
-    gif_import(&bytes[0xe1], &metadata, imported_indices);
+    size_t indices_length = 0;
+    gif_import(&bytes[0xe1], &metadata, imported_indices, &indices_length);
 
-    munit_assert_memory_equal(metadata.width * metadata.height *
-                                sizeof(uint8_t),
-                              imported_indices,
-                              cat64_indices);
+    FILE* file = fopen("out/dump_decode_64.bin", "wb");
+    fwrite(
+      &bytes[0xe1], sizeof(uint8_t), metadata.width * metadata.height, file);
+    fclose(file);
+
+    munit_assert_memory_equal(
+      indices_length * sizeof(uint8_t), imported_indices, cat64_indices);
     free(imported_indices);
 
     return MUNIT_OK;

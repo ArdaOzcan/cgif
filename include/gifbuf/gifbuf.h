@@ -2,6 +2,7 @@
 #define GIFBUF_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef uint8_t Color256RGB[3];
@@ -33,7 +34,8 @@ typedef struct
 void
 gif_import(const uint8_t* file_data,
            GIFMetadata* metadata,
-           uint8_t* pixels);
+           uint8_t* pixels,
+           size_t* indices_length);
 
 void
 gif_export(GIFMetadata metadata,

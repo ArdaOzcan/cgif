@@ -129,6 +129,7 @@ void
 gif_decompress_lzw(const u8* bytes,
                    u8 min_code_size,
                    u8* indices,
+                   size_t* out_indices_length,
                    Allocator* allocator)
 {
     const size_t clear_code = 1 << min_code_size;
@@ -226,6 +227,8 @@ gif_decompress_lzw(const u8* bytes,
         //        array_len(code_table));
         previous_code = code;
     }
+
+    *out_indices_length = array_len(indices);
 }
 
 u8*
@@ -419,13 +422,16 @@ gif_write_trailer(VArena* gif_data)
 }
 
 void
-gif_import(const u8* file_data, GIFMetadata* metadata, u8* indices)
+gif_import(const u8* file_data,
+           GIFMetadata* metadata,
+           u8* indices,
+           size_t* indices_length)
 {
     VArena lzw_arena;
     varena_init(&lzw_arena, LZW_ALLOC_SIZE);
     Allocator lzw_alloc = varena_allocator(&lzw_arena);
 
-    gif_decompress_lzw(file_data, metadata->min_code_size, indices, &lzw_alloc);
+    gif_decompress_lzw(file_data, metadata->min_code_size, indices, indices_length, &lzw_alloc);
     varena_destroy(&lzw_arena);
 }
 
