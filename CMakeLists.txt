@@ -55,9 +55,10 @@ target_include_directories(gifbuf
 )
 target_link_libraries(gifbuf PUBLIC ccore)
 
+find_library(raylib raylib)
 add_executable(gifbuf_example ${MAIN_FILE})
 target_include_directories(gifbuf_example PRIVATE ${CMAKE_SOURCE_DIR}/include)
-target_link_libraries(gifbuf_example PRIVATE gifbuf ccore)
+target_link_libraries(gifbuf_example PRIVATE gifbuf ccore raylib)
 
 add_executable(test ${TEST_FILES})
 target_include_directories(test PRIVATE ${munit_SOURCE_DIR})

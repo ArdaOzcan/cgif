@@ -1,6 +1,6 @@
 #include "../test/test-images/cat16.h"
-#include "../test/test-images/cat64.h"
 #include "../test/test-images/cat256.h"
+#include "../test/test-images/cat64.h"
 #include <gifbuf/gifbuf.h>
 
 #include <stdbool.h>
@@ -54,16 +54,87 @@ main(void)
                                           .image_extension = true,
                                           .has_gct = true };
 
-    gif_export(metadata, cat64_colors, cat64_indices, "out/out64_test.gif");
+    GIFObject gif_object = { .color_table = cat64_colors,
+                             .indices = cat64_indices,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/out64_test.gif");
 
     size_t size = 0;
     unsigned char* bytes = read_file_to_buffer("out/out64_test.gif", &size);
-    uint8_t* imported_indices = malloc(metadata.width * metadata.height);
+    GIFObject imported_gif = { 0 };
 
-    size_t indices_length = 0;
-    gif_import(&bytes[0xe1], &metadata, imported_indices, &indices_length);
+    gif_import(bytes, &imported_gif);
 
-    free(imported_indices);
+    free(bytes);
+    free(imported_gif.indices);
+    free(imported_gif.color_table);
+}
+
+#include "raylib.h"
+#include <stdint.h>
+#include <stdlib.h>
+
+int
+_main(void)
+{
+    const int screenWidth = 256;
+    const int screenHeight = 256;
+
+    InitWindow(screenWidth, screenHeight, "Pixel buffer example");
+
+    size_t size = 0;
+    unsigned char* bytes = read_file_to_buffer("out/out256_test.gif", &size);
+    GIFObject gif_object = { 0 };
+    gif_import(bytes, &gif_object);
+
+    uint32_t* pixels = malloc(gif_object.metadata.width *
+                              gif_object.metadata.height * sizeof(uint32_t));
+
+    // Fill with something (gradient)
+    for (int y = 0; y < screenHeight; y++) {
+        for (int x = 0; x < screenWidth; x++) {
+            unsigned char r =
+              gif_object
+                .color_table[gif_object.indices[y * screenWidth + x]][0];
+            unsigned char g =
+              gif_object
+                .color_table[gif_object.indices[y * screenWidth + x]][1];
+            unsigned char b =
+              gif_object
+                .color_table[gif_object.indices[y * screenWidth + x]][2];
+            unsigned char a = 255;
+            pixels[y * screenWidth + x] = ((uint32_t)a << 24) |
+                                          ((uint32_t)b << 16) |
+                                          ((uint32_t)g << 8) | ((uint32_t)r);
+        }
+    }
+
+    // Create a raylib Image from pixel buffer
+    Image image = { .data = pixels,
+                    .width = screenWidth,
+                    .height = screenHeight,
+                    .mipmaps = 1,
+                    .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+
+    // Upload to GPU
+    Texture2D texture = LoadTextureFromImage(image);
+
+    // Now we can free the CPU buffer if we don’t need to update per-frame
+    free(pixels);
+
+    SetTargetFPS(60);
+
+    while (!WindowShouldClose()) {
+        BeginDrawing();
+        ClearBackground(BLACK);
+
+        DrawTexture(texture, 0, 0, WHITE);
+
+        EndDrawing();
+    }
+
+    UnloadTexture(texture);
+    CloseWindow();
 
     return 0;
 }

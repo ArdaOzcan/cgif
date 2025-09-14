@@ -1,4 +1,5 @@
 #include "munit.h"
+
 #include "test-images/cat16.h"
 #include "test-images/cat256.h"
 #include "test-images/cat64.h"
@@ -36,6 +37,26 @@ read_file_to_buffer(const char* filename, size_t* file_size)
 
     fclose(file);
     return buffer;
+}
+
+static void
+dump_hex(const uint8_t* data, size_t length)
+{
+    for (int row = 0; row < length / 8; row++) {
+        printf("%08x\t", row * 8);
+        for (int i = 0; i < 8; i++) {
+            printf("%02x ", data[row * 8 + i]);
+        }
+        printf("\t");
+        for (int i = 0; i < 8; i++) {
+            uint8_t c = data[row * 8 + i];
+            if (33 < c && c < 126)
+                printf("%c", c);
+            else
+                printf(".");
+        }
+        printf("\n");
+    }
 }
 
 static MunitResult
@@ -84,7 +105,10 @@ test_encode_256(const MunitParameter params[], void* user_data_or_fixture)
                                           .image_extension = false,
                                           .has_gct = true };
 
-    gif_export(metadata, cat256_colors, cat256_indices, "out/out256_test.gif");
+    GIFObject gif_object = { .color_table = cat256_colors,
+                             .indices = cat256_indices,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/out256_test.gif");
     assert_binary_files_equal("out/out256_test.gif",
                               "test/test-images/cat256.gif");
 
@@ -109,7 +133,10 @@ test_encode_64(const MunitParameter params[], void* user_data_or_fixture)
                                           .image_extension = true,
                                           .has_gct = true };
 
-    gif_export(metadata, cat64_colors, cat64_indices, "out/out64_test.gif");
+    GIFObject gif_object = { .color_table = cat64_colors,
+                             .indices = cat64_indices,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/out64_test.gif");
     assert_binary_files_equal("out/out64_test.gif",
                               "test/test-images/cat64.gif");
 
@@ -134,7 +161,10 @@ test_encode_16(const MunitParameter params[], void* user_data_or_fixture)
                                           .has_gct = true,
                                           .image_extension = false };
 
-    gif_export(metadata, cat16_colors, cat16_indices, "out/out16_test.gif");
+    GIFObject gif_object = { .color_table = cat16_colors,
+                             .indices = cat16_indices,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/out16_test.gif");
     assert_binary_files_equal("out/out16_test.gif",
                               "test/test-images/cat16.gif");
 
@@ -159,18 +189,24 @@ test_decode_16(const MunitParameter params[], void* user_data_or_fixture)
                                           .has_gct = true,
                                           .image_extension = false };
 
-    gif_export(metadata, cat16_colors, cat16_indices, "out/out16_test.gif");
+    GIFObject gif_object = { .color_table = cat16_colors,
+                             .indices = cat16_indices,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/out16_test.gif");
 
     size_t size = 0;
     unsigned char* bytes = read_file_to_buffer("out/out16_test.gif", &size);
-    uint8_t* imported_indices = malloc(metadata.width * metadata.height);
+    GIFObject imported_gif = { 0 };
 
-    size_t indices_length = 0;
-    gif_import(&bytes[73], &metadata, imported_indices, &indices_length);
+    gif_import(bytes, &imported_gif);
 
-    munit_assert_memory_equal(
-      indices_length * sizeof(uint8_t), imported_indices, cat16_indices);
-    free(imported_indices);
+    munit_assert_memory_equal(metadata.width * metadata.height *
+                                sizeof(uint8_t),
+                              imported_gif.indices,
+                              cat16_indices);
+    free(bytes);
+    free(imported_gif.indices);
+    free(imported_gif.color_table);
 
     return MUNIT_OK;
 }
@@ -193,25 +229,118 @@ test_decode_64(const MunitParameter params[], void* user_data_or_fixture)
                                           .image_extension = true,
                                           .has_gct = true };
 
-    gif_export(metadata, cat64_colors, cat64_indices, "out/out64_test.gif");
+    GIFObject gif_object = { .color_table = cat64_colors,
+                             .indices = cat64_indices,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/out64_test.gif");
 
     size_t size = 0;
     unsigned char* bytes = read_file_to_buffer("out/out64_test.gif", &size);
-    uint8_t* imported_indices = malloc(metadata.width * metadata.height);
+    GIFObject imported_gif = { 0 };
 
-    size_t indices_length = 0;
-    gif_import(&bytes[0xe1], &metadata, imported_indices, &indices_length);
+    gif_import(bytes, &imported_gif);
 
-    FILE* file = fopen("out/dump_decode_64.bin", "wb");
-    fwrite(
-      &bytes[0xe1], sizeof(uint8_t), metadata.width * metadata.height, file);
-    fclose(file);
-
-    munit_assert_memory_equal(
-      indices_length * sizeof(uint8_t), imported_indices, cat64_indices);
-    free(imported_indices);
+    munit_assert_memory_equal(metadata.width * metadata.height *
+                                sizeof(uint8_t),
+                              imported_gif.indices,
+                              cat64_indices);
+    free(bytes);
+    free(imported_gif.indices);
+    free(imported_gif.color_table);
 
     return MUNIT_OK;
+}
+
+static MunitResult
+test_decode_256(const MunitParameter params[], void* user_data_or_fixture)
+{
+    GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
+                                          .background = 0x0f,
+                                          .color_resolution = 6,
+                                          .sort = 0,
+                                          .local_color_table = 0,
+                                          .pixel_aspect_ratio = 0,
+                                          .min_code_size = 4,
+                                          .gct_size_n = 3,
+                                          .left = 0,
+                                          .top = 0,
+                                          .width = 256,
+                                          .height = 256,
+                                          .image_extension = false,
+                                          .has_gct = true };
+
+    GIFObject gif_object = { .color_table = cat256_colors,
+                             .indices = cat256_indices,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/out256_test.gif");
+
+    size_t size = 0;
+    unsigned char* bytes = read_file_to_buffer("out/out256_test.gif", &size);
+    GIFObject imported_gif = { 0 };
+
+    gif_import(bytes, &imported_gif);
+
+    munit_assert_memory_equal(metadata.width * metadata.height *
+                                sizeof(uint8_t),
+                              imported_gif.indices,
+                              cat256_indices);
+    free(bytes);
+    free(imported_gif.indices);
+    free(imported_gif.color_table);
+
+    return MUNIT_OK;
+}
+
+static MunitResult
+test_read_metadata(const MunitParameter params[], void* user_data_or_fixture)
+{
+    GIFMetadata metadata = (GIFMetadata){ .version = GIF89a,
+                                          .background = 0x10,
+                                          .color_resolution = 2,
+                                          .sort = 0,
+                                          .local_color_table = 0,
+                                          .pixel_aspect_ratio = 0,
+                                          .min_code_size = 6,
+                                          .gct_size_n = 5,
+                                          .left = 0,
+                                          .top = 0,
+                                          .width = 64,
+                                          .height = 64,
+                                          .image_extension = true,
+                                          .has_gct = true };
+    GIFMetadata old_metadata = metadata;
+    GIFObject gif_object = { .metadata = metadata,
+                             .indices = cat64_indices,
+                             .color_table = cat64_colors };
+
+    gif_export(gif_object, "out/test_read_metadata.gif");
+
+    size_t size = 0;
+    unsigned char* file_data = read_file_to_buffer("out/out64_test.gif", &size);
+
+    size_t cursor = 0;
+
+    cursor += gif_read_header(file_data, &metadata.version);
+    cursor += gif_read_logical_screen_descriptor(file_data + cursor, &metadata);
+    GIFColor* colors =
+      malloc(sizeof(GIFColor) * (1 << (metadata.gct_size_n + 1)));
+    cursor += gif_read_global_color_table(
+      file_data + cursor, metadata.gct_size_n, colors);
+
+    munit_assert_memory_equal(sizeof(cat64_colors), cat64_colors, colors);
+
+    if (metadata.image_extension) {
+        uint8_t img_extension;
+        cursor += gif_read_img_extension(file_data + cursor, &img_extension);
+    }
+    cursor += gif_read_img_descriptor(file_data + cursor, &metadata);
+
+    munit_assert_memory_equal(sizeof(GIFMetadata), &metadata, &old_metadata);
+
+    free(colors);
+    free(file_data);
+
+    return 0;
 }
 
 static MunitTest tests[] = {
@@ -250,6 +379,22 @@ static MunitTest tests[] = {
     {
       "test_encode_256",      /* name */
       test_encode_256,        /* test */
+      NULL,                   /* setup */
+      NULL,                   /* tear_down */
+      MUNIT_TEST_OPTION_NONE, /* options */
+      NULL                    /* parameters */
+    },
+    {
+      "test_decode_256",      /* name */
+      test_decode_256,        /* test */
+      NULL,                   /* setup */
+      NULL,                   /* tear_down */
+      MUNIT_TEST_OPTION_NONE, /* options */
+      NULL                    /* parameters */
+    },
+    {
+      "test_read_metadata",   /* name */
+      test_read_metadata,     /* test */
       NULL,                   /* setup */
       NULL,                   /* tear_down */
       MUNIT_TEST_OPTION_NONE, /* options */

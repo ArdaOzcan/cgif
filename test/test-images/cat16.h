@@ -1,7 +1,7 @@
 #include <gifbuf/gifbuf.h>
 #include <stdint.h>
 
-static Color256RGB cat16_colors[] = {
+static GIFColor cat16_colors[] = {
     { 0, 0, 0 },       { 0, 1, 9 },       { 13, 0, 1 },      { 95, 125, 132 },
     { 92, 126, 140 },  { 223, 107, 13 },  { 238, 106, 2 },   { 216, 116, 28 },
     { 31, 176, 194 },  { 0, 187, 212 },   { 9, 187, 221 },   { 12, 188, 208 },

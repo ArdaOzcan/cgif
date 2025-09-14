@@ -20,6 +20,8 @@
 
 #define LSB_MASK(length) ((1 << (length)) - 1)
 
+#define DEBUG_LOG
+
 typedef struct
 {
     u8* array;
@@ -126,10 +128,9 @@ lzw_hashmap_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
 }
 
 void
-gif_decompress_lzw(const u8* bytes,
+gif_decompress_lzw(const u8* compressed,
                    u8 min_code_size,
-                   u8* indices,
-                   size_t* out_indices_length,
+                   u8* out_indices,
                    Allocator* allocator)
 {
     const size_t clear_code = 1 << min_code_size;
@@ -143,92 +144,116 @@ gif_decompress_lzw(const u8* bytes,
         array_append(code_table, str);
     }
 
-    // lzw_hashmap_reset(&hashmap, eoi_code, allocator);
-
     u8 code_size = min_code_size + 1;
     size_t start_byte_idx = 0;
     u8 start_bit_idx = 0;
 
+    int _temp_i = 0;
+
     // Read initial clear code
-    u16 code = bit_array_read(bytes, start_byte_idx, start_bit_idx, code_size);
+    u16 code =
+      bit_array_read(compressed, start_byte_idx, start_bit_idx, code_size);
+#ifdef DEBUG_LOG
+    printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
+    printf("Code size: %hhu\n", code_size);
+#endif
+    _temp_i++;
     start_bit_idx += code_size;
-    while (start_bit_idx >= 8) {
-        start_byte_idx++;
-        start_bit_idx %= 8;
-    }
+    start_byte_idx += start_bit_idx / 8;
+    start_bit_idx %= 8;
 
     if (code != clear_code) {
         printf("First byte should be the clear code!!\n");
     }
 
-    code = bit_array_read(bytes, start_byte_idx, start_bit_idx, code_size);
-    start_bit_idx += code_size;
-    while (start_bit_idx >= 8) {
-        start_byte_idx++;
-        start_bit_idx %= 8;
-    }
     size_t indices_len = 0;
+    // Initial code after clear (in order to set previous_code)
+    code = bit_array_read(compressed, start_byte_idx, start_bit_idx, code_size);
+#ifdef DEBUG_LOG
+    printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
+    printf("Code size: %hhu\n", code_size);
+#endif
+    _temp_i++;
+
+    start_bit_idx += code_size;
+    start_byte_idx += start_bit_idx / 8;
+    start_bit_idx %= 8;
+
     for (int j = 0; code_table[code][j] != '\0'; j++) {
-        indices[indices_len++] = code_table[code][j] - '0';
+        out_indices[indices_len++] = code_table[code][j] - '0';
     }
 
-    u8 previous_code = code;
-    while ((code = bit_array_read(
-              bytes, start_byte_idx, start_bit_idx, code_size)) != eoi_code) {
+    u16 previous_code = code;
 
-        // printf("Code %u (%b from byte 0x%02x 0b%08b) was read at %zu:%u. ",
-        //        code,
-        //        code,
-        //        bytes[start_byte_idx],
-        //        bytes[start_byte_idx],
-        //        start_byte_idx,
-        //        start_bit_idx);
+    while ((code = bit_array_read(
+              compressed, start_byte_idx, start_bit_idx, code_size)) !=
+           eoi_code) {
+#ifdef DEBUG_LOG
+        printf("~~~~~~~~\n");
+        printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
+        printf("from Byte[%zu]: \n", start_byte_idx);
+        printf("    0b%08b (0x%x)\n",
+               compressed[start_byte_idx],
+               compressed[start_byte_idx]);
+        for (int i = -5; i < 7 - start_bit_idx; i++)
+            printf(" ");
+        printf("-^\n");
+        printf(
+          "    Code size: %hhu, Start Bit Index: %d\n", code_size, start_bit_idx);
+#endif
+        _temp_i++;
 
         start_bit_idx += code_size;
-        while (start_bit_idx >= 8) {
-            start_byte_idx++;
-            start_bit_idx %= 8;
-        }
-        // printf("Location is now %zu:%u.\n", start_byte_idx, start_bit_idx);
+        start_byte_idx += start_bit_idx / 8;
+        start_bit_idx %= 8;
 
-        char k = 0;
-        if (code < array_len(code_table)) {
-            k = code_table[code][0];
-            // printf("%hu was in code table.\n", code);
-        } else {
-            k = code_table[previous_code][0];
-            // printf("%hu was not in code table.\n", code);
+        if (code == clear_code) {
+            array_len(code_table) = eoi_code;
+            code_size = min_code_size + 1;
+            continue;
         }
 
         size_t previous_code_length = strlen(code_table[previous_code]);
         char* new_entry = make(char, previous_code_length + 2, allocator);
         memcpy(new_entry, code_table[previous_code], previous_code_length);
+
+        const char* used_val = NULL;
+        char k = 0;
+
+        if (code < array_len(code_table)) {
+            k = code_table[code][0];
+            used_val = code_table[code];
+        } else {
+            k = code_table[previous_code][0];
+            used_val = new_entry;
+        }
+
         new_entry[previous_code_length] = k;
         new_entry[previous_code_length + 1] = '\0';
 
-        if (code < array_len(code_table)) {
-            for (int j = 0; code_table[code][j] != '\0'; j++) {
-                indices[indices_len++] = code_table[code][j] - '0';
-                // printf("Added %d to indices\n", indices[indices_len - 1]);
-            }
-        } else {
-            for (int j = 0; new_entry[j] != '\0'; j++) {
-                indices[indices_len++] = new_entry[j] - '0';
-                // printf("Added %d to indices\n", indices[indices_len - 1]);
-            }
+        for (int j = 0; used_val[j] != '\0'; j++) {
+            out_indices[indices_len++] = used_val[j] - '0';
+#ifdef DEBUG_LOG
+            printf("READ: Index[%zu]: %hhu\n",
+                   indices_len - 1,
+                   out_indices[indices_len - 1]);
+#endif
         }
 
         array_append(code_table, new_entry);
         if (array_len(code_table) >= (1 << code_size)) {
             code_size++;
         }
-        // printf("Added %s to code table. (New size: %zu)\n",
-        //        new_entry,
-        //        array_len(code_table));
+
         previous_code = code;
     }
 
-    *out_indices_length = array_len(indices);
+    printf("Encountered EOI code (%zu) at byte %zu from 0x%02x, completed "
+           "decompression\n",
+           eoi_code,
+           start_byte_idx,
+           compressed[start_byte_idx]);
+    printf("Dictionary length was: %zu\n", array_len(code_table));
 }
 
 u8*
@@ -238,7 +263,8 @@ gif_compress_lzw(Allocator* allocator,
                  size_t indices_len,
                  size_t* compressed_len)
 {
-    Hashmap hashmap = hashmap_init(LZW_DICT_MAX_CAP, allocator);
+    Hashmap hashmap = { 0 };
+    hashmap_init(&hashmap, LZW_DICT_MAX_CAP, allocator);
     const size_t clear_code = 1 << min_code_size;
     const size_t eoi_code = clear_code + 1;
 
@@ -252,6 +278,16 @@ gif_compress_lzw(Allocator* allocator,
     // not included
     u8 code_size = min_code_size + 1;
     bit_array_push(&bit_array, clear_code, code_size);
+    int _temp_i = 0;
+#ifdef DEBUG_LOG
+    printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
+           _temp_i,
+           code_size,
+           clear_code,
+           clear_code);
+    // printf("Code size: %hhu\n", code_size);
+#endif
+    _temp_i++;
 
     char* input_buf = dynstr_init(INPUT_BUFFER_CAP, allocator);
     dynstr_append_c(input_buf, '0' + indices[0]);
@@ -259,6 +295,10 @@ gif_compress_lzw(Allocator* allocator,
     char* appended = dynstr_init(INPUT_BUFFER_CAP, allocator);
     for (size_t i = 1; i < indices_len; i++) {
         char k = '0' + indices[i];
+#ifdef DEBUG_LOG
+        printf(
+          "WRITE: Index[%zu]: %hhu ('%c')\n", i, indices[i], '0' + indices[i]);
+#endif
 
         dynstr_set(appended, input_buf);
         dynstr_append_c(appended, k);
@@ -281,16 +321,40 @@ gif_compress_lzw(Allocator* allocator,
             assert(idx != NULL);
 
             bit_array_push(&bit_array, *idx, code_size);
-            // printf("Pushed %b to the bit array for index %d\n",
-            //        *idx & LSB_MASK(code_size),
-            //        indices[i]);
+            _temp_i++;
+#ifdef DEBUG_LOG
+            printf("~~~~~~~~\n");
+            printf(
+              "WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
+            printf("to Byte[%zu]: \n", array_len(bit_array.array) - 1);
+            printf(
+              "    0b%08b (0x%x)\n", bit_array.next_byte, bit_array.next_byte);
+            for (int i = -6; i < 7 - bit_array.current_bit_idx; i++)
+                printf(" ");
+            printf("^");
+            for (int i = 0; i < code_size; i++)
+                printf("-");
+            printf("\n    Code size: %hhu, Current Bit Index: %d\n",
+                   code_size,
+                   bit_array.current_bit_idx);
+            printf("Dict['%s'] = %d\n", key, *val);
+#endif
 
             dynstr_clear(input_buf);
             dynstr_append_c(input_buf, k);
 
             if (hashmap.length >= LZW_DICT_MAX_CAP) {
-                // printf("---CLEAR---\n");
                 bit_array_push(&bit_array, clear_code, code_size);
+                _temp_i++;
+#ifdef DEBUG_LOG
+                printf("---CLEAR---\n");
+                printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
+                       _temp_i,
+                       code_size,
+                       clear_code,
+                       clear_code);
+                printf("Code size: %hhu\n", code_size);
+#endif
                 hashmap_clear(&hashmap);
                 lzw_hashmap_reset(&hashmap, eoi_code, allocator);
                 code_size = min_code_size + 1;
@@ -305,12 +369,38 @@ gif_compress_lzw(Allocator* allocator,
     assert(idx != NULL);
 
     bit_array_push(&bit_array, *idx, code_size);
+    _temp_i++;
+#ifdef DEBUG_LOG
+    printf("WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
+    printf("Code size: %hhu\n", code_size);
+#endif
 
     bit_array_push(&bit_array, eoi_code, code_size);
+    _temp_i++;
+#ifdef DEBUG_LOG
+    printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
+           _temp_i,
+           code_size,
+           eoi_code,
+           eoi_code);
+    printf("Code size: %hhu\n", code_size);
+#endif
     bit_array_pad_last_byte(&bit_array);
     *compressed_len = array_len(bit_array.array);
     printf("Dictionary length: %zu\n", hashmap.length);
     return bit_array.array;
+}
+
+size_t
+gif_read_header(const u8* header, GIFVersion* version)
+{
+    if (memcmp(header, "GIF87a", 6) == 0) {
+        *version = GIF87a;
+    } else if (memcmp(header, "GIF89a", 6) == 0) {
+        *version = GIF89a;
+    }
+
+    return 6;
 }
 
 void
@@ -326,39 +416,78 @@ gif_write_header(VArena* gif_data, GIFVersion version)
     }
 }
 
-void
-gif_write_logical_screen_descriptor(VArena* gif_data,
-                                    u16 width,
-                                    u16 height,
-                                    bool gct,
-                                    u8 color_resolution,
-                                    bool sort,
-                                    u8 gct_size,
-                                    u8 background,
-                                    u8 pixel_aspect_ratio)
+size_t
+gif_read_logical_screen_descriptor(const u8* bytes, GIFMetadata* metadata)
 {
-    varena_push_copy(gif_data, &width, sizeof(u16));
-    varena_push_copy(gif_data, &height, sizeof(u16));
+    size_t cursor = 0;
+    memcpy(&metadata->width, bytes + cursor, sizeof(u16));
+    cursor += sizeof(u16);
+
+    memcpy(&metadata->height, bytes + cursor, sizeof(u16));
+    cursor += sizeof(u16);
 
     u8 packed = 0;
-    packed |= gct << 7;                      // 1000 0000
-    packed |= (color_resolution & 0x7) << 4; // 0111 0000
-    packed |= sort << 3;                     // 0000 1000
-    packed |= (gct_size & 0x7);              // 0000 0111
+    memcpy(&packed, bytes + cursor, sizeof(u8));
+    cursor += sizeof(u8);
+    metadata->has_gct = packed >> 7;
+    metadata->color_resolution = (packed >> 4) & LSB_MASK(3);
+    metadata->sort = (packed >> 3) & LSB_MASK(1);
+    metadata->gct_size_n = packed & LSB_MASK(3);
 
-    varena_push_copy(gif_data, &packed, sizeof(u8));
-    varena_push_copy(gif_data, &background, sizeof(u8));
-    varena_push_copy(gif_data, &pixel_aspect_ratio, sizeof(u8));
+    memcpy(&metadata->background, bytes + cursor, sizeof(u8));
+    cursor += sizeof(u8);
+
+    memcpy(&metadata->pixel_aspect_ratio, bytes + cursor, sizeof(u8));
+    cursor += sizeof(u8);
+
+    return cursor;
 }
 
 void
-gif_write_global_color_table(VArena* gif_data, const Color256RGB* colors)
+gif_write_logical_screen_descriptor(VArena* gif_data,
+                                    const GIFMetadata* metadata)
+{
+    varena_push_copy(gif_data, &metadata->width, sizeof(u16));
+    varena_push_copy(gif_data, &metadata->height, sizeof(u16));
+
+    u8 packed = 0;
+    packed |= metadata->has_gct << 7;                  // 1000 0000
+    packed |= (metadata->color_resolution & 0x7) << 4; // 0111 0000
+    packed |= metadata->sort << 3;                     // 0000 1000
+    packed |= (metadata->gct_size_n & 0x7);            // 0000 0111
+
+    varena_push_copy(gif_data, &packed, sizeof(u8));
+    varena_push_copy(gif_data, &metadata->background, sizeof(u8));
+    varena_push_copy(gif_data, &metadata->pixel_aspect_ratio, sizeof(u8));
+}
+
+size_t
+gif_read_global_color_table(const u8* bytes, u8 N, GIFColor* colors)
+{
+    u8 color_amount = 1 << (N + 1);
+    for (u8 i = 0; i < color_amount; i++) {
+        memcpy(colors[i], bytes + i * sizeof(GIFColor), sizeof(GIFColor));
+    }
+
+    return color_amount * sizeof(GIFColor);
+}
+
+void
+gif_write_global_color_table(VArena* gif_data, const GIFColor* colors)
 {
     u8 N = ((u8*)gif_data->base)[10] & LSB_MASK(3);
     u8 colorAmount = 1 << (N + 1);
     for (u8 i = 0; i < colorAmount; i++) {
-        varena_push_copy(gif_data, &colors[i], sizeof(Color256RGB));
+        varena_push_copy(gif_data, &colors[i], sizeof(GIFColor));
     }
+}
+
+size_t
+gif_read_img_extension(const u8* bytes, u8* output)
+{
+    // Read the dummy bytes for now.
+    memcpy(output, bytes, 8 * sizeof(u8));
+    return 8;
 }
 
 void
@@ -374,22 +503,77 @@ gif_write_img_extension(VArena* gif_data)
     }
 }
 
-void
-gif_write_img_descriptor(VArena* gif_data,
-                         u16 left,
-                         u16 top,
-                         u16 width,
-                         u16 height,
-                         u8 local_color_table)
+size_t
+gif_read_img_descriptor(const u8* bytes, GIFMetadata* metadata)
 {
-    varena_push_copy(gif_data, ",", sizeof(char));
-    varena_push_copy(gif_data, &left, sizeof(u16));
-    varena_push_copy(gif_data, &top, sizeof(u16));
-    varena_push_copy(gif_data, &width, sizeof(u16));
-    varena_push_copy(gif_data, &height, sizeof(u16));
-    varena_push_copy(gif_data, &local_color_table, sizeof(u8));
+    size_t cursor = 0;
+    if (',' == *(bytes + cursor)) {
+        cursor += sizeof(char);
+    } else {
+        printf("Expected %02x at the beginning of image descriptor section.\n",
+               ',');
+    }
+
+    memcpy(&metadata->left, bytes + cursor, sizeof(u16));
+    cursor += sizeof(u16);
+
+    memcpy(&metadata->top, bytes + cursor, sizeof(u16));
+    cursor += sizeof(u16);
+
+    memcpy(&metadata->width, bytes + cursor, sizeof(u16));
+    cursor += sizeof(u16);
+
+    memcpy(&metadata->height, bytes + cursor, sizeof(u16));
+    cursor += sizeof(u16);
+
+    memcpy(&metadata->local_color_table, bytes + cursor, sizeof(u8));
+    cursor += sizeof(u8);
+
+    return cursor;
 }
 
+void
+gif_write_img_descriptor(VArena* gif_data, const GIFMetadata* metadata)
+{
+    varena_push_copy(gif_data, ",", sizeof(char));
+    varena_push_copy(gif_data, &metadata->left, sizeof(u16));
+    varena_push_copy(gif_data, &metadata->top, sizeof(u16));
+    varena_push_copy(gif_data, &metadata->width, sizeof(u16));
+    varena_push_copy(gif_data, &metadata->height, sizeof(u16));
+    varena_push_copy(gif_data, &metadata->local_color_table, sizeof(u8));
+}
+
+// Reads the data blocks and writes all bytes to a continous buffer.
+size_t
+gif_read_img_data(const u8* in_bytes, u8 lzw_min_code, u8* out_bytes)
+{
+    size_t read_cursor = 0;
+    size_t write_cursor = 0;
+    memcpy(&lzw_min_code, in_bytes + read_cursor, sizeof(u8));
+    read_cursor += sizeof(u8);
+
+    u8 block_length = 0;
+    memcpy(&block_length, in_bytes + read_cursor, sizeof(u8));
+    read_cursor += sizeof(u8);
+    while (block_length > 0) {
+        memcpy(out_bytes + write_cursor, &in_bytes[read_cursor], block_length);
+
+        write_cursor += block_length;
+        read_cursor += block_length;
+
+        memcpy(&block_length, in_bytes + read_cursor, sizeof(u8));
+        read_cursor += sizeof(u8);
+    }
+
+    printf("gif_read_img_data: Compressed data byte length was: %zu (without "
+           "block lengths)\n",
+           write_cursor);
+
+    return read_cursor;
+}
+
+// Writes the compressed indices
+// into data blocks as specified in the GIF specs.
 void
 gif_write_img_data(VArena* gif_data,
                    u8 lzw_min_code,
@@ -397,6 +581,7 @@ gif_write_img_data(VArena* gif_data,
                    size_t bytes_length)
 {
     varena_push_copy(gif_data, &lzw_min_code, sizeof(u8));
+    size_t start = gif_data->used;
 
     size_t bytes_left = bytes_length;
     while (bytes_left) {
@@ -407,11 +592,24 @@ gif_write_img_data(VArena* gif_data,
         varena_push_copy(gif_data,
                          &bytes[bytes_length - bytes_left],
                          block_length * sizeof(u8));
+        // printf("Block Length: %u\n", block_length);
+        // printf("Written to byte 0x%04zx\n", gif_data->used - 1);
         bytes_left -= block_length;
     }
 
     const u8 terminator = '\0';
     varena_push_copy(gif_data, &terminator, sizeof(u8));
+}
+
+size_t
+gif_read_trailer(const u8* bytes)
+{
+    u8 trailer = 0x3B;
+    memcpy(&trailer, bytes, 1);
+    if (trailer != 0x3B) {
+        fprintf(stderr, "GIF Trailer was not provided. Ignoring...\n");
+    }
+    return 1;
 }
 
 void
@@ -422,63 +620,75 @@ gif_write_trailer(VArena* gif_data)
 }
 
 void
-gif_import(const u8* file_data,
-           GIFMetadata* metadata,
-           u8* indices,
-           size_t* indices_length)
+gif_import(const u8* file_data, GIFObject* gif_object)
 {
     VArena lzw_arena;
     varena_init(&lzw_arena, LZW_ALLOC_SIZE);
     Allocator lzw_alloc = varena_allocator(&lzw_arena);
 
-    gif_decompress_lzw(file_data, metadata->min_code_size, indices, indices_length, &lzw_alloc);
+    size_t cursor = 0;
+
+    cursor += gif_read_header(file_data, &gif_object->metadata.version);
+    cursor += gif_read_logical_screen_descriptor(file_data + cursor,
+                                                 &gif_object->metadata);
+    gif_object->metadata.min_code_size = gif_object->metadata.gct_size_n + 1;
+    gif_object->color_table =
+      calloc((1 << (gif_object->metadata.gct_size_n + 1)), sizeof(GIFColor));
+    cursor += gif_read_global_color_table(file_data + cursor,
+                                          gif_object->metadata.gct_size_n,
+                                          gif_object->color_table);
+
+    if (gif_object->metadata.image_extension) {
+        u8* img_extension = make(u8, 8, &lzw_alloc);
+        cursor += gif_read_img_extension(file_data + cursor, img_extension);
+    }
+    cursor +=
+      gif_read_img_descriptor(file_data + cursor, &gif_object->metadata);
+
+    size_t pixel_amount =
+      gif_object->metadata.width * gif_object->metadata.height;
+
+    u8* compressed = array(u8, pixel_amount, &lzw_alloc);
+    gif_read_img_data(
+      file_data + cursor, gif_object->metadata.min_code_size, compressed);
+
+    gif_object->indices = calloc(pixel_amount, sizeof(u8));
+    gif_decompress_lzw(compressed,
+                       gif_object->metadata.min_code_size,
+                       gif_object->indices,
+                       &lzw_alloc);
     varena_destroy(&lzw_arena);
 }
 
 void
-gif_export(GIFMetadata metadata,
-           const Color256RGB* colors,
-           const u8* indices,
-           const char* out_path)
+gif_export(GIFObject gif_object, const char* out_path)
 {
     VArena gif_data;
     varena_init_ex(&gif_data, GIF_ALLOC_SIZE, system_page_size(), 1);
 
-    gif_write_header(&gif_data, metadata.version);
-    gif_write_logical_screen_descriptor(&gif_data,
-                                        metadata.width,
-                                        metadata.height,
-                                        metadata.has_gct,
-                                        metadata.color_resolution,
-                                        metadata.sort,
-                                        metadata.gct_size_n,
-                                        metadata.background,
-                                        metadata.pixel_aspect_ratio);
+    gif_write_header(&gif_data, gif_object.metadata.version);
+    gif_write_logical_screen_descriptor(&gif_data, &gif_object.metadata);
 
-    gif_write_global_color_table(&gif_data, colors);
-    if (metadata.image_extension) {
+    gif_write_global_color_table(&gif_data, gif_object.color_table);
+    if (gif_object.metadata.image_extension) {
         gif_write_img_extension(&gif_data);
     }
-    gif_write_img_descriptor(&gif_data,
-                             metadata.left,
-                             metadata.top,
-                             metadata.width,
-                             metadata.height,
-                             metadata.local_color_table);
+    gif_write_img_descriptor(&gif_data, &gif_object.metadata);
 
     VArena lzw_arena;
     varena_init(&lzw_arena, LZW_ALLOC_SIZE);
     Allocator lzw_alloc = varena_allocator(&lzw_arena);
 
     size_t compressed_len = 0;
-    u8* compressed = gif_compress_lzw(&lzw_alloc,
-                                      metadata.min_code_size,
-                                      indices,
-                                      metadata.width * metadata.height,
-                                      &compressed_len);
+    u8* compressed =
+      gif_compress_lzw(&lzw_alloc,
+                       gif_object.metadata.min_code_size,
+                       gif_object.indices,
+                       gif_object.metadata.width * gif_object.metadata.height,
+                       &compressed_len);
 
     gif_write_img_data(
-      &gif_data, metadata.min_code_size, compressed, compressed_len);
+      &gif_data, gif_object.metadata.min_code_size, compressed, compressed_len);
     gif_write_trailer(&gif_data);
 
     FILE* file = fopen(out_path, "wb");
@@ -486,6 +696,7 @@ gif_export(GIFMetadata metadata,
         fwrite(gif_data.base, sizeof(char), gif_data.used, file);
         fclose(file);
     }
+    printf("GIF exported to %s successfully.\n", out_path);
     printf("GIF Arena used: %.2f%% (%llu/%llu KB)\n",
            100.0f * gif_data.used / gif_data.size,
            gif_data.used / KILOBYTE,

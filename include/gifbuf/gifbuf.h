@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef uint8_t Color256RGB[3];
+typedef uint8_t GIFColor[3];
 
 typedef enum
 {
@@ -31,16 +31,29 @@ typedef struct
     bool image_extension;
 } GIFMetadata;
 
-void
-gif_import(const uint8_t* file_data,
-           GIFMetadata* metadata,
-           uint8_t* pixels,
-           size_t* indices_length);
+typedef struct {
+    GIFMetadata metadata;
+    GIFColor* color_table;
+    uint8_t* indices;
+} GIFObject;
 
 void
-gif_export(GIFMetadata metadata,
-           const Color256RGB* colors,
-           const uint8_t* indices,
+gif_import(const uint8_t* file_data,
+           GIFObject* gif_object);
+
+void
+gif_export(GIFObject gif_object,
            const char* out_path);
+
+size_t
+gif_read_header(const uint8_t* header, GIFVersion* version);
+size_t
+gif_read_logical_screen_descriptor(const uint8_t* bytes, GIFMetadata* metadata);
+size_t
+gif_read_global_color_table(const uint8_t* bytes, uint8_t N, GIFColor* colors);
+size_t
+gif_read_img_extension(const uint8_t* bytes, uint8_t* output);
+size_t
+gif_read_img_descriptor(const uint8_t* bytes, GIFMetadata* metadata);
 
 #endif // GIFBUF_H
