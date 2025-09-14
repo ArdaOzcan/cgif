@@ -29,14 +29,18 @@ typedef struct
     u8 current_bit_idx;
 } BitArray;
 
-BitArray
-bit_array_init(u8* buffer)
+typedef struct
 {
-    BitArray bit_array;
-    bit_array.array = buffer;
-    bit_array.current_bit_idx = 0;
-    bit_array.next_byte = 0;
-    return bit_array;
+    size_t byte_idx;
+    u8 bit_idx;
+} BitArrayReader;
+
+void
+bit_array_init(BitArray* bit_array, u8* buffer)
+{
+    bit_array->array = buffer;
+    bit_array->current_bit_idx = 0;
+    bit_array->next_byte = 0;
 }
 
 #ifndef min
@@ -50,20 +54,18 @@ bit_array_init(u8* buffer)
 
 // Return value is always aligned to the least significant bit.
 u32
-bit_array_read(const u8* bytes,
-               size_t start_byte_idx,
-               u8 start_bit_idx,
-               u8 bit_amount)
+bit_array_read(const u8* bytes, BitArrayReader* reader, u8 bit_amount)
 {
-    assert(start_bit_idx < 8);
+    assert(reader->bit_idx < 8);
     assert(bit_amount > 0);
     u32 result = 0;
-    size_t byte_idx = start_byte_idx;
+    size_t byte_idx = reader->byte_idx;
 
     u8 bits_read = 0;
-    u8 bits_in_first_byte = min(8 - start_bit_idx, bit_amount);
+    u8 bits_in_first_byte = min(8 - reader->bit_idx, bit_amount);
 
-    result |= (bytes[byte_idx] >> start_bit_idx) & LSB_MASK(bits_in_first_byte);
+    result |=
+      (bytes[byte_idx] >> reader->bit_idx) & LSB_MASK(bits_in_first_byte);
     bits_read += bits_in_first_byte;
     byte_idx++;
 
@@ -74,6 +76,10 @@ bit_array_read(const u8* bytes,
     }
 
     result |= (bytes[byte_idx] & LSB_MASK(bit_amount - bits_read)) << bits_read;
+
+    reader->bit_idx += bit_amount;
+    reader->byte_idx += reader->bit_idx / 8;
+    reader->bit_idx %= 8;
 
     return result;
 }
@@ -145,22 +151,15 @@ gif_decompress_lzw(const u8* compressed,
     }
 
     u8 code_size = min_code_size + 1;
-    size_t start_byte_idx = 0;
-    u8 start_bit_idx = 0;
-
-    int _temp_i = 0;
-
+    BitArrayReader bit_reader = { 0 };
     // Read initial clear code
-    u16 code =
-      bit_array_read(compressed, start_byte_idx, start_bit_idx, code_size);
+    u16 code = bit_array_read(compressed, &bit_reader, code_size);
+    int _temp_i = 0;
 #ifdef DEBUG_LOG
     printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
     printf("Code size: %hhu\n", code_size);
 #endif
     _temp_i++;
-    start_bit_idx += code_size;
-    start_byte_idx += start_bit_idx / 8;
-    start_bit_idx %= 8;
 
     if (code != clear_code) {
         printf("First byte should be the clear code!!\n");
@@ -168,16 +167,12 @@ gif_decompress_lzw(const u8* compressed,
 
     size_t indices_len = 0;
     // Initial code after clear (in order to set previous_code)
-    code = bit_array_read(compressed, start_byte_idx, start_bit_idx, code_size);
+    code = bit_array_read(compressed, &bit_reader, code_size);
 #ifdef DEBUG_LOG
     printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
     printf("Code size: %hhu\n", code_size);
 #endif
     _temp_i++;
-
-    start_bit_idx += code_size;
-    start_byte_idx += start_bit_idx / 8;
-    start_bit_idx %= 8;
 
     for (int j = 0; code_table[code][j] != '\0'; j++) {
         out_indices[indices_len++] = code_table[code][j] - '0';
@@ -185,27 +180,23 @@ gif_decompress_lzw(const u8* compressed,
 
     u16 previous_code = code;
 
-    while ((code = bit_array_read(
-              compressed, start_byte_idx, start_bit_idx, code_size)) !=
+    while ((code = bit_array_read(compressed, &bit_reader, code_size)) !=
            eoi_code) {
 #ifdef DEBUG_LOG
         printf("~~~~~~~~\n");
         printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
-        printf("from Byte[%zu]: \n", start_byte_idx);
+        printf("from Byte[%zu]: \n", bit_reader.byte_idx);
         printf("    0b%08b (0x%x)\n",
-               compressed[start_byte_idx],
-               compressed[start_byte_idx]);
-        for (int i = -5; i < 7 - start_bit_idx; i++)
+               compressed[bit_reader.byte_idx],
+               compressed[bit_reader.byte_idx]);
+        for (int i = -5; i < 7 - bit_reader.bit_idx; i++)
             printf(" ");
         printf("-^\n");
-        printf(
-          "    Code size: %hhu, Start Bit Index: %d\n", code_size, start_bit_idx);
+        printf("    Code size: %hhu, Start Bit Index: %d\n",
+               code_size,
+               bit_reader.bit_idx);
 #endif
         _temp_i++;
-
-        start_bit_idx += code_size;
-        start_byte_idx += start_bit_idx / 8;
-        start_bit_idx %= 8;
 
         if (code == clear_code) {
             array_len(code_table) = eoi_code;
@@ -251,8 +242,8 @@ gif_decompress_lzw(const u8* compressed,
     printf("Encountered EOI code (%zu) at byte %zu from 0x%02x, completed "
            "decompression\n",
            eoi_code,
-           start_byte_idx,
-           compressed[start_byte_idx]);
+           bit_reader.byte_idx,
+           compressed[bit_reader.byte_idx]);
     printf("Dictionary length was: %zu\n", array_len(code_table));
 }
 
@@ -271,7 +262,8 @@ gif_compress_lzw(Allocator* allocator,
     lzw_hashmap_reset(&hashmap, eoi_code, allocator);
 
     u8* bit_array_buf = array(u8, BIT_ARRAY_MIN_CAP, allocator);
-    BitArray bit_array = bit_array_init(bit_array_buf);
+    BitArray bit_array = { 0 };
+    bit_array_init(&bit_array, bit_array_buf);
 
     // Starts from min + 1 because min_code_size is for colors only
     // special codes (clear code and end of instruction code) are
@@ -321,7 +313,6 @@ gif_compress_lzw(Allocator* allocator,
             assert(idx != NULL);
 
             bit_array_push(&bit_array, *idx, code_size);
-            _temp_i++;
 #ifdef DEBUG_LOG
             printf("~~~~~~~~\n");
             printf(
@@ -339,13 +330,13 @@ gif_compress_lzw(Allocator* allocator,
                    bit_array.current_bit_idx);
             printf("Dict['%s'] = %d\n", key, *val);
 #endif
+            _temp_i++;
 
             dynstr_clear(input_buf);
             dynstr_append_c(input_buf, k);
 
             if (hashmap.length >= LZW_DICT_MAX_CAP) {
                 bit_array_push(&bit_array, clear_code, code_size);
-                _temp_i++;
 #ifdef DEBUG_LOG
                 printf("---CLEAR---\n");
                 printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
@@ -355,6 +346,7 @@ gif_compress_lzw(Allocator* allocator,
                        clear_code);
                 printf("Code size: %hhu\n", code_size);
 #endif
+                _temp_i++;
                 hashmap_clear(&hashmap);
                 lzw_hashmap_reset(&hashmap, eoi_code, allocator);
                 code_size = min_code_size + 1;
@@ -369,14 +361,13 @@ gif_compress_lzw(Allocator* allocator,
     assert(idx != NULL);
 
     bit_array_push(&bit_array, *idx, code_size);
-    _temp_i++;
 #ifdef DEBUG_LOG
     printf("WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
     printf("Code size: %hhu\n", code_size);
 #endif
+    _temp_i++;
 
     bit_array_push(&bit_array, eoi_code, code_size);
-    _temp_i++;
 #ifdef DEBUG_LOG
     printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
            _temp_i,
@@ -385,6 +376,7 @@ gif_compress_lzw(Allocator* allocator,
            eoi_code);
     printf("Code size: %hhu\n", code_size);
 #endif
+    _temp_i++;
     bit_array_pad_last_byte(&bit_array);
     *compressed_len = array_len(bit_array.array);
     printf("Dictionary length: %zu\n", hashmap.length);
@@ -592,8 +584,6 @@ gif_write_img_data(VArena* gif_data,
         varena_push_copy(gif_data,
                          &bytes[bytes_length - bytes_left],
                          block_length * sizeof(u8));
-        // printf("Block Length: %u\n", block_length);
-        // printf("Written to byte 0x%04zx\n", gif_data->used - 1);
         bytes_left -= block_length;
     }
 
@@ -638,10 +628,12 @@ gif_import(const u8* file_data, GIFObject* gif_object)
                                           gif_object->metadata.gct_size_n,
                                           gif_object->color_table);
 
-    if (gif_object->metadata.image_extension) {
+    // Temporary
+    if (file_data[cursor] == '!' || gif_object->metadata.image_extension) {
         u8* img_extension = make(u8, 8, &lzw_alloc);
         cursor += gif_read_img_extension(file_data + cursor, img_extension);
     }
+
     cursor +=
       gif_read_img_descriptor(file_data + cursor, &gif_object->metadata);
 
