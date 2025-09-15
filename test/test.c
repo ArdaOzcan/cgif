@@ -102,7 +102,7 @@ test_encode_256(const MunitParameter params[], void* user_data_or_fixture)
                                           .top = 0,
                                           .width = 256,
                                           .height = 256,
-                                          .image_extension = false,
+                                          .has_graphic_control = false,
                                           .has_gct = true };
 
     GIFObject gif_object = { .color_table = cat256_colors,
@@ -130,12 +130,21 @@ test_encode_64(const MunitParameter params[], void* user_data_or_fixture)
                                           .top = 0,
                                           .width = 64,
                                           .height = 64,
-                                          .image_extension = true,
+                                          .has_graphic_control = true,
                                           .has_gct = true };
 
-    GIFObject gif_object = { .color_table = cat64_colors,
+    GIFGraphicControl graphic_control =
+      (GIFGraphicControl){ .disposal_method = 0,
+                           .user_input_flag = false,
+                           .transparent_color_flag = true,
+                           .delay_time = 10,
+                           .transparent_color_index = 0x1f };
+
+    GIFObject gif_object = { .metadata = metadata,
+                             .color_table = cat64_colors,
                              .indices = cat64_indices,
-                             .metadata = metadata };
+                             .graphic_control = graphic_control };
+
     gif_export(gif_object, "out/out64_test.gif");
     assert_binary_files_equal("out/out64_test.gif",
                               "test/test-images/cat64.gif");
@@ -159,7 +168,7 @@ test_encode_16(const MunitParameter params[], void* user_data_or_fixture)
                                           .width = 16,
                                           .height = 16,
                                           .has_gct = true,
-                                          .image_extension = false };
+                                          .has_graphic_control = false };
 
     GIFObject gif_object = { .color_table = cat16_colors,
                              .indices = cat16_indices,
@@ -187,7 +196,7 @@ test_decode_16(const MunitParameter params[], void* user_data_or_fixture)
                                           .width = 16,
                                           .height = 16,
                                           .has_gct = true,
-                                          .image_extension = false };
+                                          .has_graphic_control = false };
 
     GIFObject gif_object = { .color_table = cat16_colors,
                              .indices = cat16_indices,
@@ -226,7 +235,7 @@ test_decode_64(const MunitParameter params[], void* user_data_or_fixture)
                                           .top = 0,
                                           .width = 64,
                                           .height = 64,
-                                          .image_extension = true,
+                                          .has_graphic_control = true,
                                           .has_gct = true };
 
     GIFObject gif_object = { .color_table = cat64_colors,
@@ -266,7 +275,7 @@ test_decode_256(const MunitParameter params[], void* user_data_or_fixture)
                                           .top = 0,
                                           .width = 256,
                                           .height = 256,
-                                          .image_extension = false,
+                                          .has_graphic_control = false,
                                           .has_gct = true };
 
     GIFObject gif_object = { .color_table = cat256_colors,
@@ -306,7 +315,7 @@ test_read_metadata(const MunitParameter params[], void* user_data_or_fixture)
                                           .top = 0,
                                           .width = 64,
                                           .height = 64,
-                                          .image_extension = true,
+                                          .has_graphic_control = true,
                                           .has_gct = true };
     GIFMetadata old_metadata = metadata;
     GIFObject gif_object = { .metadata = metadata,
@@ -329,9 +338,10 @@ test_read_metadata(const MunitParameter params[], void* user_data_or_fixture)
 
     munit_assert_memory_equal(sizeof(cat64_colors), cat64_colors, colors);
 
-    if (metadata.image_extension) {
-        uint8_t img_extension;
-        cursor += gif_read_img_extension(file_data + cursor, &img_extension);
+    if (metadata.has_graphic_control) {
+        GIFGraphicControl graphic_control;
+        cursor += gif_read_graphic_control_extension(file_data + cursor,
+                                                     &graphic_control);
     }
     cursor += gif_read_img_descriptor(file_data + cursor, &metadata);
 

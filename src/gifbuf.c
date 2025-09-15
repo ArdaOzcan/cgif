@@ -20,7 +20,7 @@
 
 #define LSB_MASK(length) ((1 << (length)) - 1)
 
-#define DEBUG_LOG
+// #define DEBUG_LOG
 
 typedef struct
 {
@@ -218,6 +218,8 @@ gif_decompress_lzw(const u8* compressed,
             k = code_table[previous_code][0];
             used_val = new_entry;
         }
+
+        printf("k = %x\n", k);
 
         new_entry[previous_code_length] = k;
         new_entry[previous_code_length + 1] = '\0';
@@ -456,8 +458,8 @@ gif_write_logical_screen_descriptor(VArena* gif_data,
 size_t
 gif_read_global_color_table(const u8* bytes, u8 N, GIFColor* colors)
 {
-    u8 color_amount = 1 << (N + 1);
-    for (u8 i = 0; i < color_amount; i++) {
+    u16 color_amount = 1 << (N + 1);
+    for (int i = 0; i < color_amount; i++) {
         memcpy(colors[i], bytes + i * sizeof(GIFColor), sizeof(GIFColor));
     }
 
@@ -475,24 +477,41 @@ gif_write_global_color_table(VArena* gif_data, const GIFColor* colors)
 }
 
 size_t
-gif_read_img_extension(const u8* bytes, u8* output)
+gif_read_graphic_control_extension(const u8* bytes, GIFGraphicControl* output)
 {
     // Read the dummy bytes for now.
-    memcpy(output, bytes, 8 * sizeof(u8));
+    // memcpy(output, bytes, 8 * sizeof(u8));
     return 8;
 }
 
 void
-gif_write_img_extension(VArena* gif_data)
+gif_write_graphics_control_extension(VArena* gif_data,
+                                     GIFGraphicControl control)
 {
-    // Dummy bytes for now
-    u8 bytes[] = {
-        0x21, 0xf9, 0x04, 0x01, 0x0a, 0x00, 0x1f, 0x00,
-    };
+    // u8 bytes[] = {
+    //     0x21, 0xf9, 0x04, 0x01, 0x0a, 0x00, 0x1f, 0x00,
+    // };
+    // for (int i = 0; i < sizeof(bytes) / sizeof(u8); i++) {
+    //     varena_push_copy(gif_data, &bytes[i], sizeof(u8));
+    // }
 
-    for (int i = 0; i < sizeof(bytes) / sizeof(u8); i++) {
-        varena_push_copy(gif_data, &bytes[i], sizeof(u8));
-    }
+    u8 introducer = 0x21;
+    u8 control_label = 0xf9;
+    u8 block_size = 0x4;
+    varena_push_copy(gif_data, &introducer, sizeof(u8));
+    varena_push_copy(gif_data, &control_label, sizeof(u8));
+    varena_push_copy(gif_data, &block_size, sizeof(u8));
+
+    u8 packed = 0;
+    packed |= (control.disposal_method & LSB_MASK(3)) << 3;
+    packed |= (control.user_input_flag & LSB_MASK(1)) << 1;
+    packed |= (control.transparent_color_flag & LSB_MASK(1));
+    varena_push_copy(gif_data, &packed, sizeof(u8));
+    varena_push_copy(gif_data, &control.delay_time, sizeof(u16));
+    varena_push_copy(gif_data, &control.transparent_color_index, sizeof(u8));
+
+    u8 terminator = 0x00;
+    varena_push_copy(gif_data, &terminator, sizeof(u8));
 }
 
 size_t
@@ -612,6 +631,11 @@ gif_write_trailer(VArena* gif_data)
 void
 gif_import(const u8* file_data, GIFObject* gif_object)
 {
+    if(file_data == NULL) {
+        fprintf(stderr, "File data was NULL. Aborting GIF import\n");
+        return;
+    }
+
     VArena lzw_arena;
     varena_init(&lzw_arena, LZW_ALLOC_SIZE);
     Allocator lzw_alloc = varena_allocator(&lzw_arena);
@@ -628,10 +652,10 @@ gif_import(const u8* file_data, GIFObject* gif_object)
                                           gif_object->metadata.gct_size_n,
                                           gif_object->color_table);
 
-    // Temporary
-    if (file_data[cursor] == '!' || gif_object->metadata.image_extension) {
-        u8* img_extension = make(u8, 8, &lzw_alloc);
-        cursor += gif_read_img_extension(file_data + cursor, img_extension);
+    if (file_data[cursor] == '!') {
+        GIFGraphicControl graphic_control = { 0 };
+        cursor += gif_read_graphic_control_extension(file_data + cursor,
+                                                     &graphic_control);
     }
 
     cursor +=
@@ -662,8 +686,9 @@ gif_export(GIFObject gif_object, const char* out_path)
     gif_write_logical_screen_descriptor(&gif_data, &gif_object.metadata);
 
     gif_write_global_color_table(&gif_data, gif_object.color_table);
-    if (gif_object.metadata.image_extension) {
-        gif_write_img_extension(&gif_data);
+    if (gif_object.metadata.has_graphic_control) {
+        gif_write_graphics_control_extension(&gif_data,
+                                             gif_object.graphic_control);
     }
     gif_write_img_descriptor(&gif_data, &gif_object.metadata);
 

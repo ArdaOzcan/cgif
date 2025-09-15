@@ -28,12 +28,21 @@ typedef struct
     uint8_t pixel_aspect_ratio;
     uint8_t local_color_table;
     uint8_t min_code_size;
-    bool image_extension;
+    bool has_graphic_control;
 } GIFMetadata;
+
+typedef struct {
+    uint8_t disposal_method;
+    bool user_input_flag;
+    bool transparent_color_flag;
+    uint16_t delay_time;
+    uint8_t transparent_color_index;
+} GIFGraphicControl;
 
 typedef struct {
     GIFMetadata metadata;
     GIFColor* color_table;
+    GIFGraphicControl graphic_control;
     uint8_t* indices;
 } GIFObject;
 
@@ -52,7 +61,7 @@ gif_read_logical_screen_descriptor(const uint8_t* bytes, GIFMetadata* metadata);
 size_t
 gif_read_global_color_table(const uint8_t* bytes, uint8_t N, GIFColor* colors);
 size_t
-gif_read_img_extension(const uint8_t* bytes, uint8_t* output);
+gif_read_graphic_control_extension(const uint8_t* bytes, GIFGraphicControl* graphic_control);
 size_t
 gif_read_img_descriptor(const uint8_t* bytes, GIFMetadata* metadata);
 
