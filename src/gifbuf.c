@@ -20,7 +20,7 @@
 
 #define LSB_MASK(length) ((1 << (length)) - 1)
 
-// #define DEBUG_LOG
+#define DEBUG_LOG
 
 typedef struct
 {
@@ -338,7 +338,11 @@ gif_compress_lzw(Allocator* allocator,
         printf("\n    Code size: %hhu, Current Bit Index: %d\n",
                code_size,
                bit_array.current_bit_idx);
-        printf("Dict['%s'] = %d\n", key, *val);
+        printf("Dict['");
+        for (int i = 0; i < array_len(key); i++) {
+            printf("%c", key[i] + '0');
+        }
+        printf("'] = %d\n", *val);
 #endif
         _temp_i++;
 
