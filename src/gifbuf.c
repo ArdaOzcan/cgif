@@ -20,8 +20,6 @@
 
 #define LSB_MASK(length) ((1 << (length)) - 1)
 
-#define gif_compress_lzw(a, b, c, d, e) gif_compress_lzw_old(a, b, c, d, e)
-
 // #define DEBUG_LOG
 
 typedef struct
@@ -132,142 +130,6 @@ lzw_hashmap_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
         *val = i;
         hashmap_insertn(hashmap, (char*)key, 1, val);
     }
-}
-
-u8*
-gif_compress_lzw_old(Allocator* allocator,
-                     u8 min_code_size,
-                     const u8* indices,
-                     size_t indices_len,
-                     size_t* compressed_len)
-{
-    Hashmap hashmap = { 0 };
-    hashmap_init(&hashmap, LZW_DICT_MAX_CAP, allocator);
-    const size_t clear_code = 1 << min_code_size;
-    const size_t eoi_code = clear_code + 1;
-
-    lzw_hashmap_reset(&hashmap, eoi_code, allocator);
-
-    u8* bit_array_buf = array(u8, BIT_ARRAY_MIN_CAP, allocator);
-    BitArray bit_array = { 0 };
-    bit_array_init(&bit_array, bit_array_buf);
-
-    // Starts from min + 1 because min_code_size is for colors only
-    // special codes (clear code and end of instruction code) are
-    // not included
-    u8 code_size = min_code_size + 1;
-    bit_array_push(&bit_array, clear_code, code_size);
-    int _temp_i = 0;
-#ifdef DEBUG_LOG
-    printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
-           _temp_i,
-           code_size,
-           clear_code,
-           clear_code);
-    // printf("Code size: %hhu\n", code_size);
-#endif
-    _temp_i++;
-
-    char* input_buf = dynstr_init(INPUT_BUFFER_CAP, allocator);
-    dynstr_append_c(input_buf, '0' + indices[0]);
-
-    char* appended = dynstr_init(INPUT_BUFFER_CAP, allocator);
-    for (size_t i = 1; i < indices_len; i++) {
-        char k = '0' + indices[i];
-#ifdef DEBUG_LOG
-        printf(
-          "WRITE: Index[%zu]: %hhu ('%c')\n", i, indices[i], '0' + indices[i]);
-#endif
-
-        dynstr_set(appended, input_buf);
-        dynstr_append_c(appended, k);
-
-        char* result = hashmap_get(&hashmap, appended);
-
-        if (result != NULL) {
-            dynstr_append_c(input_buf, k);
-            // printf("INPUT: %s\n", input_buf);
-        } else {
-            char* key = cstr_from_dynstr(appended, allocator);
-            u16* val = make(u16, 1, allocator);
-            *val = hashmap.length;
-
-            hashmap_insert(&hashmap, key, val);
-            // printf("'%s': %d\n", key, *val);
-
-            u16* idx = hashmap_get(&hashmap, input_buf);
-
-            assert(idx != NULL);
-
-            bit_array_push(&bit_array, *idx, code_size);
-#ifdef DEBUG_LOG
-            printf("~~~~~~~~\n");
-            printf(
-              "WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
-            printf("to Byte[%zu]: \n", array_len(bit_array.array) - 1);
-            printf(
-              "    0b%08b (0x%x)\n", bit_array.next_byte, bit_array.next_byte);
-            for (int i = -6; i < 7 - bit_array.current_bit_idx; i++)
-                printf(" ");
-            printf("^");
-            for (int i = 0; i < code_size; i++)
-                printf("-");
-            printf("\n    Code size: %hhu, Current Bit Index: %d\n",
-                   code_size,
-                   bit_array.current_bit_idx);
-            printf("Dict['%s'] = %d\n", key, *val);
-#endif
-            _temp_i++;
-
-            dynstr_clear(input_buf);
-            dynstr_append_c(input_buf, k);
-
-            if (hashmap.length >= LZW_DICT_MAX_CAP) {
-                bit_array_push(&bit_array, clear_code, code_size);
-#ifdef DEBUG_LOG
-                printf("---CLEAR---\n");
-                printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
-                       _temp_i,
-                       code_size,
-                       clear_code,
-                       clear_code);
-                printf("Code size: %hhu\n", code_size);
-#endif
-                _temp_i++;
-                hashmap_clear(&hashmap);
-                lzw_hashmap_reset(&hashmap, eoi_code, allocator);
-                code_size = min_code_size + 1;
-            } else if (hashmap.length > (1 << code_size)) {
-                code_size++;
-            }
-        }
-    }
-
-    u16* idx = hashmap_get(&hashmap, input_buf);
-
-    assert(idx != NULL);
-
-    bit_array_push(&bit_array, *idx, code_size);
-#ifdef DEBUG_LOG
-    printf("WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
-    printf("Code size: %hhu\n", code_size);
-#endif
-    _temp_i++;
-
-    bit_array_push(&bit_array, eoi_code, code_size);
-#ifdef DEBUG_LOG
-    printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
-           _temp_i,
-           code_size,
-           eoi_code,
-           eoi_code);
-    printf("Code size: %hhu\n", code_size);
-#endif
-    _temp_i++;
-    bit_array_pad_last_byte(&bit_array);
-    *compressed_len = array_len(bit_array.array);
-    printf("Dictionary length: %zu\n", hashmap.length);
-    return bit_array.array;
 }
 
 void
@@ -386,7 +248,7 @@ gif_decompress_lzw(const u8* compressed,
 }
 
 u8*
-gif_compress_lzw_new(Allocator* allocator,
+gif_compress_lzw(Allocator* allocator,
                      u8 min_code_size,
                      const u8* indices,
                      size_t indices_len,
