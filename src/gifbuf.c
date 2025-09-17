@@ -20,6 +20,8 @@
 
 #define LSB_MASK(length) ((1 << (length)) - 1)
 
+#define gif_compress_lzw(a, b, c, d, e) gif_compress_lzw_old(a, b, c, d, e)
+
 // #define DEBUG_LOG
 
 typedef struct
@@ -124,137 +126,20 @@ void
 lzw_hashmap_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
 {
     for (u16 i = 0; i <= eoi_code; i++) {
-        char* key = make(char, 2, allocator);
-        key[0] = '0' + i;
-        key[1] = '\0';
+        u8* key = array(u8, 1, allocator);
+        array_append(key, i);
         u16* val = make(u16, 1, allocator);
         *val = i;
-        hashmap_insert(hashmap, key, val);
+        hashmap_insertn(hashmap, (char*)key, 1, val);
     }
-}
-
-void
-gif_decompress_lzw(const u8* compressed,
-                   u8 min_code_size,
-                   u8* out_indices,
-                   Allocator* allocator)
-{
-    const size_t clear_code = 1 << min_code_size;
-    const size_t eoi_code = clear_code + 1;
-    const char** code_table = array(const char*, 128, allocator);
-
-    for (int i = 0; i <= eoi_code; i++) {
-        char* str = make(char, 2, allocator);
-        str[0] = '0' + i;
-        str[1] = '\0';
-        array_append(code_table, str);
-    }
-
-    u8 code_size = min_code_size + 1;
-    BitArrayReader bit_reader = { 0 };
-    // Read initial clear code
-    u16 code = bit_array_read(compressed, &bit_reader, code_size);
-    int _temp_i = 0;
-#ifdef DEBUG_LOG
-    printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
-    printf("Code size: %hhu\n", code_size);
-#endif
-    _temp_i++;
-
-    if (code != clear_code) {
-        printf("First byte should be the clear code!!\n");
-    }
-
-    size_t indices_len = 0;
-    // Initial code after clear (in order to set previous_code)
-    code = bit_array_read(compressed, &bit_reader, code_size);
-#ifdef DEBUG_LOG
-    printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
-    printf("Code size: %hhu\n", code_size);
-#endif
-    _temp_i++;
-
-    for (int j = 0; code_table[code][j] != '\0'; j++) {
-        out_indices[indices_len++] = code_table[code][j] - '0';
-    }
-
-    u16 previous_code = code;
-
-    while ((code = bit_array_read(compressed, &bit_reader, code_size)) !=
-           eoi_code) {
-#ifdef DEBUG_LOG
-        printf("~~~~~~~~\n");
-        printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
-        printf("from Byte[%zu]: \n", bit_reader.byte_idx);
-        printf("    0b%08b (0x%x)\n",
-               compressed[bit_reader.byte_idx],
-               compressed[bit_reader.byte_idx]);
-        for (int i = -5; i < 7 - bit_reader.bit_idx; i++)
-            printf(" ");
-        printf("-^\n");
-        printf("    Code size: %hhu, Start Bit Index: %d\n",
-               code_size,
-               bit_reader.bit_idx);
-#endif
-        _temp_i++;
-
-        if (code == clear_code) {
-            array_len(code_table) = eoi_code;
-            code_size = min_code_size + 1;
-            continue;
-        }
-
-        size_t previous_code_length = strlen(code_table[previous_code]);
-        char* new_entry = make(char, previous_code_length + 2, allocator);
-        memcpy(new_entry, code_table[previous_code], previous_code_length);
-
-        const char* used_val = NULL;
-        char k = 0;
-
-        if (code < array_len(code_table)) {
-            k = code_table[code][0];
-            used_val = code_table[code];
-        } else {
-            k = code_table[previous_code][0];
-            used_val = new_entry;
-        }
-
-        printf("k = %x\n", k);
-
-        new_entry[previous_code_length] = k;
-        new_entry[previous_code_length + 1] = '\0';
-
-        for (int j = 0; used_val[j] != '\0'; j++) {
-            out_indices[indices_len++] = used_val[j] - '0';
-#ifdef DEBUG_LOG
-            printf("READ: Index[%zu]: %hhu\n",
-                   indices_len - 1,
-                   out_indices[indices_len - 1]);
-#endif
-        }
-
-        array_append(code_table, new_entry);
-        if (array_len(code_table) >= (1 << code_size)) {
-            code_size++;
-        }
-
-        previous_code = code;
-    }
-
-    printf("Encountered EOI code (%zu) at byte %zu from 0x%02x, completed "
-           "decompression\n",
-           eoi_code,
-           bit_reader.byte_idx,
-           compressed[bit_reader.byte_idx]);
-    printf("Dictionary length was: %zu\n", array_len(code_table));
 }
 
 u8*
-gif_compress_lzw(Allocator* allocator,
-                 u8 min_code_size,
-                 const u8* indices,
-                 size_t indices_len,
-                 size_t* compressed_len)
+gif_compress_lzw_old(Allocator* allocator,
+                     u8 min_code_size,
+                     const u8* indices,
+                     size_t indices_len,
+                     size_t* compressed_len)
 {
     Hashmap hashmap = { 0 };
     hashmap_init(&hashmap, LZW_DICT_MAX_CAP, allocator);
@@ -382,6 +267,270 @@ gif_compress_lzw(Allocator* allocator,
     bit_array_pad_last_byte(&bit_array);
     *compressed_len = array_len(bit_array.array);
     printf("Dictionary length: %zu\n", hashmap.length);
+    return bit_array.array;
+}
+
+void
+gif_decompress_lzw(const u8* compressed,
+                   u8 min_code_size,
+                   u8* out_indices,
+                   Allocator* allocator)
+{
+    const size_t clear_code = 1 << min_code_size;
+    const size_t eoi_code = clear_code + 1;
+    const u8** code_table = array(const u8*, 128, allocator);
+
+    for (int i = 0; i <= eoi_code; i++) {
+        u8* str = array(u8, 1, allocator);
+        array_append(str, i);
+        array_append(code_table, str);
+    }
+
+    u8 code_size = min_code_size + 1;
+    BitArrayReader bit_reader = { 0 };
+    // Read initial clear code
+    u16 code = bit_array_read(compressed, &bit_reader, code_size);
+    int _temp_i = 0;
+#ifdef DEBUG_LOG
+    printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
+    printf("Code size: %hhu\n", code_size);
+#endif
+    _temp_i++;
+
+    if (code != clear_code) {
+        printf("First byte should be the clear code!!\n");
+    }
+
+    size_t indices_len = 0;
+    // Initial code after clear (in order to set previous_code)
+    code = bit_array_read(compressed, &bit_reader, code_size);
+#ifdef DEBUG_LOG
+    printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
+    printf("Code size: %hhu\n", code_size);
+#endif
+    _temp_i++;
+
+    for (int j = 0; j < array_len(code_table[code]); j++) {
+        out_indices[indices_len++] = code_table[code][j];
+    }
+
+    u16 previous_code = code;
+
+    while ((code = bit_array_read(compressed, &bit_reader, code_size)) !=
+           eoi_code) {
+#ifdef DEBUG_LOG
+        printf("~~~~~~~~\n");
+        printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
+        printf("from Byte[%zu]: \n", bit_reader.byte_idx);
+        printf("    0b%08b (0x%x)\n",
+               compressed[bit_reader.byte_idx],
+               compressed[bit_reader.byte_idx]);
+        for (int i = -5; i < 7 - bit_reader.bit_idx; i++)
+            printf(" ");
+        printf("-^\n");
+        printf("    Code size: %hhu, Start Bit Index: %d\n",
+               code_size,
+               bit_reader.bit_idx);
+#endif
+        _temp_i++;
+
+        if (code == clear_code) {
+            array_len(code_table) = eoi_code;
+            code_size = min_code_size + 1;
+            continue;
+        }
+
+        size_t previous_code_length = array_len(code_table[previous_code]);
+        u8* new_entry = array(u8, previous_code_length + 1, allocator);
+        for (int i = 0; i < previous_code_length; i++)
+            array_append(new_entry, code_table[previous_code][i]);
+
+        const u8* used_val = NULL;
+        char k = 0;
+
+        if (code < array_len(code_table)) {
+            k = code_table[code][0];
+            used_val = code_table[code];
+        } else {
+            k = code_table[previous_code][0];
+            used_val = new_entry;
+        }
+
+        // printf("k = %x\n", k);
+
+        array_append(new_entry, k);
+
+        for (int j = 0; j < array_len(used_val); j++) {
+            out_indices[indices_len++] = used_val[j];
+#ifdef DEBUG_LOG
+            printf("READ: Index[%zu]: %hhu\n",
+                   indices_len - 1,
+                   out_indices[indices_len - 1]);
+#endif
+        }
+
+        array_append(code_table, new_entry);
+        if (array_len(code_table) >= (1 << code_size)) {
+            code_size++;
+        }
+
+        previous_code = code;
+    }
+
+    printf("Encountered EOI code (%zu) at byte %zu from 0x%02x, completed "
+           "decompression\n",
+           eoi_code,
+           bit_reader.byte_idx,
+           compressed[bit_reader.byte_idx]);
+    printf("Dictionary length was: %zu\n", array_len(code_table));
+}
+
+u8*
+gif_compress_lzw_new(Allocator* allocator,
+                     u8 min_code_size,
+                     const u8* indices,
+                     size_t indices_len,
+                     size_t* compressed_len)
+{
+    Hashmap hashmap = { 0 };
+    hashmap_init(&hashmap, LZW_DICT_MAX_CAP, allocator);
+    const size_t clear_code = 1 << min_code_size;
+    const size_t eoi_code = clear_code + 1;
+
+    lzw_hashmap_reset(&hashmap, eoi_code, allocator);
+
+    u8* bit_array_buf = array(u8, BIT_ARRAY_MIN_CAP, allocator);
+    BitArray bit_array = { 0 };
+    bit_array_init(&bit_array, bit_array_buf);
+
+    // Starts from min + 1 because min_code_size is for colors only
+    // special codes (clear code and end of instruction code) are
+    // not included
+    u8 code_size = min_code_size + 1;
+    bit_array_push(&bit_array, clear_code, code_size);
+    int _temp_i = 0;
+#ifdef DEBUG_LOG
+    printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
+           _temp_i,
+           code_size,
+           clear_code,
+           clear_code);
+    // printf("Code size: %hhu\n", code_size);
+#endif
+    _temp_i++;
+
+    u8* input_buf = array(u8, INPUT_BUFFER_CAP, allocator);
+    array_append(input_buf, indices[0]);
+
+    u8* appended = array(u8, INPUT_BUFFER_CAP, allocator);
+    for (size_t i = 1; i < indices_len; i++) {
+        char k = indices[i];
+#ifdef DEBUG_LOG
+        printf(
+          "WRITE: Index[%zu]: %hhu ('%c')\n", i, indices[i], '0' + indices[i]);
+#endif
+
+        array_len(appended) = 0;
+        for (int i = 0; i < array_len(input_buf); i++) {
+            array_append(appended, input_buf[i]);
+        }
+        array_append(appended, k);
+
+        char* result =
+          hashmap_getn(&hashmap, (char*)appended, array_len(appended));
+
+        if (result != NULL) {
+            array_append(input_buf, k);
+            // printf("INPUT: %s\n", input_buf);
+            continue;
+        }
+
+        // TODO: Implement an array copy in ccore.
+        u8* key = array(u8, array_len(appended), allocator);
+        for (int i = 0; i < array_len(appended); i++) {
+            array_append(key, appended[i]);
+        }
+
+        u16* val = make(u16, 1, allocator);
+        *val = hashmap.length;
+
+        hashmap_insertn(&hashmap, (char*)key, array_len(key), val);
+        // printf("'%s': %d\n", key, *val);
+
+        u16* idx =
+          hashmap_getn(&hashmap, (char*)input_buf, array_len(input_buf));
+
+        assert(idx != NULL);
+
+        bit_array_push(&bit_array, *idx, code_size);
+#ifdef DEBUG_LOG
+        printf("~~~~~~~~\n");
+        printf("WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
+        printf("to Byte[%zu]: \n", array_len(bit_array.array) - 1);
+        printf("    0b%08b (0x%x)\n", bit_array.next_byte, bit_array.next_byte);
+        for (int i = -6; i < 7 - bit_array.current_bit_idx; i++)
+            printf(" ");
+        printf("^");
+        for (int i = 0; i < code_size; i++)
+            printf("-");
+        printf("\n    Code size: %hhu, Current Bit Index: %d\n",
+               code_size,
+               bit_array.current_bit_idx);
+        printf("Dict['%s'] = %d\n", key, *val);
+#endif
+        _temp_i++;
+
+        array_len(input_buf) = 0;
+        array_append(input_buf, k);
+
+        if (hashmap.length >= LZW_DICT_MAX_CAP) {
+            bit_array_push(&bit_array, clear_code, code_size);
+#ifdef DEBUG_LOG
+            printf("---CLEAR---\n");
+            printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
+                   _temp_i,
+                   code_size,
+                   clear_code,
+                   clear_code);
+            printf("Code size: %hhu\n", code_size);
+#endif
+            _temp_i++;
+            hashmap_clear(&hashmap);
+            lzw_hashmap_reset(&hashmap, eoi_code, allocator);
+            code_size = min_code_size + 1;
+        } else if (hashmap.length > (1 << code_size)) {
+            code_size++;
+        }
+    }
+
+    u16* idx = hashmap_getn(&hashmap, (char*)input_buf, array_len(input_buf));
+
+    assert(idx != NULL);
+
+    bit_array_push(&bit_array, *idx, code_size);
+#ifdef DEBUG_LOG
+    printf("WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
+    printf("Code size: %hhu\n", code_size);
+#endif
+    _temp_i++;
+
+    bit_array_push(&bit_array, eoi_code, code_size);
+#ifdef DEBUG_LOG
+    printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
+           _temp_i,
+           code_size,
+           eoi_code,
+           eoi_code);
+    printf("Code size: %hhu\n", code_size);
+#endif
+    _temp_i++;
+    bit_array_pad_last_byte(&bit_array);
+    *compressed_len = array_len(bit_array.array);
+    printf("Dictionary length: %zu\n", hashmap.length);
+
+    // printf("0x%x\n",
+    //        bit_array.array[5608 - 73 - 22]);
+
     return bit_array.array;
 }
 
@@ -631,7 +780,7 @@ gif_write_trailer(VArena* gif_data)
 void
 gif_import(const u8* file_data, GIFObject* gif_object)
 {
-    if(file_data == NULL) {
+    if (file_data == NULL) {
         fprintf(stderr, "File data was NULL. Aborting GIF import\n");
         return;
     }
@@ -696,6 +845,7 @@ gif_export(GIFObject gif_object, const char* out_path)
     varena_init(&lzw_arena, LZW_ALLOC_SIZE);
     Allocator lzw_alloc = varena_allocator(&lzw_arena);
 
+    printf("Before compress: %zu\n", gif_data.used);
     size_t compressed_len = 0;
     u8* compressed =
       gif_compress_lzw(&lzw_alloc,

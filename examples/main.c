@@ -39,35 +39,27 @@ read_file_to_buffer(const char* filename, size_t* file_size)
 int
 main(void)
 {
-    // GIFMetadata metadata = (GIFMetadata){ .version = GIF89a,
-    //                                       .background = 0x10,
-    //                                       .color_resolution = 2,
-    //                                       .sort = 0,
-    //                                       .local_color_table = 0,
-    //                                       .pixel_aspect_ratio = 0,
-    //                                       .min_code_size = 6,
-    //                                       .gct_size_n = 5,
-    //                                       .left = 0,
-    //                                       .top = 0,
-    //                                       .width = 64,
-    //                                       .height = 64,
-    //                                       .has_graphic_control = true,
-    //                                       .has_gct = true };
-    //
-    // GIFObject gif_object = { .color_table = cat64_colors,
-    //                          .indices = cat64_indices,
-    //                          .metadata = metadata };
-    // gif_export(gif_object, "out/out64_test.gif");
+    GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
+                                          .background = 0x0f,
+                                          .color_resolution = 6,
+                                          .sort = 0,
+                                          .local_color_table = 0,
+                                          .pixel_aspect_ratio = 0,
+                                          .min_code_size = 4,
+                                          .gct_size_n = 3,
+                                          .left = 0,
+                                          .top = 0,
+                                          .width = 256,
+                                          .height = 256,
+                                          .has_graphic_control = false,
+                                          .has_gct = true };
 
-    size_t size = 0;
-    unsigned char* bytes = read_file_to_buffer("out/out64_test.gif", &size);
-    GIFObject imported_gif = { 0 };
+    GIFObject gif_object = { .color_table = cat256_colors,
+                             .indices = cat256_indices,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/out256_test.gif");
 
-    gif_import(bytes, &imported_gif);
-
-    free(bytes);
-    free(imported_gif.indices);
-    free(imported_gif.color_table);
+    return 0;
 }
 
 #include "raylib.h"

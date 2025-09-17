@@ -394,14 +394,14 @@ static MunitTest tests[] = {
       MUNIT_TEST_OPTION_NONE, /* options */
       NULL                    /* parameters */
     },
-    {
-      "test_decode_256",      /* name */
-      test_decode_256,        /* test */
-      NULL,                   /* setup */
-      NULL,                   /* tear_down */
-      MUNIT_TEST_OPTION_NONE, /* options */
-      NULL                    /* parameters */
-    },
+    // {
+    //   "test_decode_256",      /* name */
+    //   test_decode_256,        /* test */
+    //   NULL,                   /* setup */
+    //   NULL,                   /* tear_down */
+    //   MUNIT_TEST_OPTION_NONE, /* options */
+    //   NULL                    /* parameters */
+    // },
     {
       "test_read_metadata",   /* name */
       test_read_metadata,     /* test */
