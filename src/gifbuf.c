@@ -124,11 +124,15 @@ void
 lzw_hashmap_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
 {
     for (u16 i = 0; i <= eoi_code; i++) {
-        u8* key = array(u8, 1, allocator);
-        array_append(key, i);
+        u8* char_i = array(u8, 1, allocator);
+        array_append(char_i, i);
         u16* val = make(u16, 1, allocator);
         *val = i;
-        hashmap_insertn(hashmap, (char*)key, 1, val);
+
+        ByteString* key = make(ByteString, 1, allocator);
+        key->ptr = (char*)char_i;
+        key->length = 1;
+        hashmap_insert(hashmap, (char*)key, val);
     }
 }
 
@@ -249,13 +253,13 @@ gif_decompress_lzw(const u8* compressed,
 
 u8*
 gif_compress_lzw(Allocator* allocator,
-                     u8 min_code_size,
-                     const u8* indices,
-                     size_t indices_len,
-                     size_t* compressed_len)
+                 u8 min_code_size,
+                 const u8* indices,
+                 size_t indices_len,
+                 size_t* compressed_len)
 {
     Hashmap hashmap = { 0 };
-    hashmap_init(&hashmap, LZW_DICT_MAX_CAP, allocator);
+    hashmap_byte_string_init(&hashmap, LZW_DICT_MAX_CAP, allocator);
     const size_t clear_code = 1 << min_code_size;
     const size_t eoi_code = clear_code + 1;
 
@@ -288,8 +292,14 @@ gif_compress_lzw(Allocator* allocator,
     for (size_t i = 1; i < indices_len; i++) {
         char k = indices[i];
 #ifdef DEBUG_LOG
-        printf(
-          "WRITE: Index[%zu]: %hhu ('%c')\n", i, indices[i], '0' + indices[i]);
+        // printf(
+        //   "WRITE: Index[%zu]: %hhu ('%c')\n", i, indices[i], '0' +
+        //   indices[i]);
+        printf("Input Buffer: ");
+        for (int i = 0; i < array_len(input_buf); i++) {
+            printf("%c", input_buf[i] + '0');
+        }
+        printf("\n");
 #endif
 
         array_len(appended) = 0;
@@ -298,8 +308,10 @@ gif_compress_lzw(Allocator* allocator,
         }
         array_append(appended, k);
 
-        char* result =
-          hashmap_getn(&hashmap, (char*)appended, array_len(appended));
+        char* result = hashmap_byte_string_get(
+          &hashmap,
+          (ByteString){ .ptr = (char*)appended,
+                        .length = array_len(appended) });
 
         if (result != NULL) {
             array_append(input_buf, k);
@@ -308,25 +320,35 @@ gif_compress_lzw(Allocator* allocator,
         }
 
         // TODO: Implement an array copy in ccore.
-        u8* key = array(u8, array_len(appended), allocator);
+        u8* appended_copy = array(u8, array_len(appended), allocator);
         for (int i = 0; i < array_len(appended); i++) {
-            array_append(key, appended[i]);
+            array_append(appended_copy, appended[i]);
         }
+        ByteString* key = make(ByteString, 1, allocator);
+        key->length = array_len(appended);
+        key->ptr = (char*)appended_copy;
 
         u16* val = make(u16, 1, allocator);
         *val = hashmap.length;
 
-        hashmap_insertn(&hashmap, (char*)key, array_len(key), val);
+        hashmap_insert(&hashmap, key, val);
         // printf("'%s': %d\n", key, *val);
 
-        u16* idx =
-          hashmap_getn(&hashmap, (char*)input_buf, array_len(input_buf));
+        u16* idx = hashmap_byte_string_get(
+          &hashmap,
+          (ByteString){ .ptr = (char*)input_buf,
+                        .length = array_len(input_buf) });
 
         assert(idx != NULL);
 
         bit_array_push(&bit_array, *idx, code_size);
 #ifdef DEBUG_LOG
-        printf("~~~~~~~~\n");
+        printf("~~~~FOUND~~~~\n");
+        printf("Dict['");
+        for (int i = 0; i < key->length; i++) {
+            printf("%c", key->ptr[i] + '0');
+        }
+        printf("'] = %d\n", *val);
         printf("WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
         printf("to Byte[%zu]: \n", array_len(bit_array.array) - 1);
         printf("    0b%08b (0x%x)\n", bit_array.next_byte, bit_array.next_byte);
@@ -338,11 +360,7 @@ gif_compress_lzw(Allocator* allocator,
         printf("\n    Code size: %hhu, Current Bit Index: %d\n",
                code_size,
                bit_array.current_bit_idx);
-        printf("Dict['");
-        for (int i = 0; i < array_len(key); i++) {
-            printf("%c", key[i] + '0');
-        }
-        printf("'] = %d\n", *val);
+        printf("~~~~~~~~~~~~~\n");
 #endif
         _temp_i++;
 
@@ -369,7 +387,9 @@ gif_compress_lzw(Allocator* allocator,
         }
     }
 
-    u16* idx = hashmap_getn(&hashmap, (char*)input_buf, array_len(input_buf));
+    u16* idx = hashmap_byte_string_get(
+      &hashmap,
+      (ByteString){ .ptr = (char*)input_buf, .length = array_len(input_buf) });
 
     assert(idx != NULL);
 
