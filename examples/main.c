@@ -40,25 +40,15 @@ read_file_to_buffer(const char* filename, size_t* file_size)
 int
 _main(void)
 {
-    GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
-                                          .background = 0x0f,
-                                          .color_resolution = 6,
-                                          .sort = 0,
-                                          .local_color_table = 0,
-                                          .pixel_aspect_ratio = 0,
-                                          .min_code_size = 4,
-                                          .gct_size_n = 3,
-                                          .left = 0,
-                                          .top = 0,
-                                          .width = 256,
-                                          .height = 256,
-                                          .has_graphic_control = false,
-                                          .has_gct = true };
+    size_t size = 0;
+    unsigned char* bytes = read_file_to_buffer("test/test-images/woman256.gif", &size);
+    GIFObject imported_gif = { 0 };
 
-    GIFObject gif_object = { .color_table = cat256_colors,
-                             .indices = cat256_indices,
-                             .metadata = metadata };
-    gif_export(gif_object, 4096, 254, "out/out256_test.gif");
+    gif_import(bytes, &imported_gif);
+
+    free(bytes);
+    free(imported_gif.indices);
+    free(imported_gif.color_table);
 
     return 0;
 }
@@ -68,16 +58,16 @@ _main(void)
 #include <stdlib.h>
 
 int
-__main(void)
+main(void)
 {
-    const int screenWidth = 256;
-    const int screenHeight = 256;
+    const int screenWidth = 512;
+    const int screenHeight = 512;
 
     InitWindow(screenWidth, screenHeight, "Pixel buffer example");
 
     size_t size = 0;
     unsigned char* bytes =
-      read_file_to_buffer("test/test-images/woman256.gif", &size);
+      read_file_to_buffer("test/test-images/bird512.gif", &size);
     GIFObject gif_object = { 0 };
     gif_import(bytes, &gif_object);
 
@@ -134,7 +124,7 @@ __main(void)
 }
 
 int
-main(void)
+__main(void)
 {
     GIFMetadata metadata = { 0 };
     size_t size = 0;
@@ -158,6 +148,6 @@ main(void)
                              .indices = woman256_indices,
                              .graphic_control = graphic_control,
                              .metadata = metadata };
-    gif_export(gif_object, 4097, 254, "out/test_woman_256.gif");
+    gif_export(gif_object, 4096, 254, "out/test_woman_256.gif");
     return 0;
 }

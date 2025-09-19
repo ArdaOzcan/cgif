@@ -244,7 +244,7 @@ gif_decompress_lzw(const u8* compressed,
         }
 
         array_append(code_table, new_entry);
-        if (array_len(code_table) >= (1 << code_size)) {
+        if (array_len(code_table) >= (1 << code_size) && code_size < 12) {
             code_size++;
         }
 
@@ -326,16 +326,6 @@ gif_compress_lzw(Allocator* allocator,
             continue;
         }
 
-        u8* appended_copy = (u8*)array_copy(appended, allocator);
-        ByteString* key = make(ByteString, 1, allocator);
-        key->length = array_len(appended);
-        key->ptr = (char*)appended_copy;
-
-        u16* val = make(u16, 1, allocator);
-        *val = hashmap.length + 2;
-
-        hashmap_insert(&hashmap, key, val);
-
         u16* idx = hashmap_byte_string_get(
           &hashmap,
           (ByteString){ .ptr = (char*)input_buf,
@@ -352,8 +342,46 @@ gif_compress_lzw(Allocator* allocator,
         }
 #endif
         assert(idx != NULL);
+        assert(*idx < lzw_hashmap_max_length);
 
         bit_array_push(&bit_array, *idx, code_size);
+        _temp_i++;
+
+        array_len(input_buf) = 0;
+        array_append(input_buf, k);
+
+        size_t next_code = hashmap.length + 2;
+
+        // +2 for CLEAR and EOI codes.
+        if (next_code >= lzw_hashmap_max_length) {
+            bit_array_push(&bit_array, clear_code, code_size);
+#ifdef DEBUG_LOG
+            printf("---CLEAR---\n");
+            printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
+                   _temp_i,
+                   code_size,
+                   clear_code,
+                   clear_code);
+            printf("Code size: %hhu\n", code_size);
+#endif
+            _temp_i++;
+            hashmap_clear(&hashmap);
+            lzw_hashmap_reset(&hashmap, eoi_code, allocator);
+            code_size = min_code_size + 1;
+            continue;
+        } else if (next_code >= (1 << code_size)) {
+            code_size++;
+        }
+
+        u8* appended_copy = (u8*)array_copy(appended, allocator);
+        ByteString* key = make(ByteString, 1, allocator);
+        key->length = array_len(appended);
+        key->ptr = (char*)appended_copy;
+
+        u16* val = make(u16, 1, allocator);
+        *val = next_code;
+
+        hashmap_insert(&hashmap, key, val);
 #ifdef DEBUG_LOG
         printf("~~~~FOUND~~~~\n");
         printf("Dict['");
@@ -374,30 +402,6 @@ gif_compress_lzw(Allocator* allocator,
                bit_array.current_bit_idx);
         printf("~~~~~~~~~~~~~\n");
 #endif
-        _temp_i++;
-
-        array_len(input_buf) = 0;
-        array_append(input_buf, k);
-
-        // +2 for CLEAR and EOI codes.
-        if (hashmap.length + 2 >= lzw_hashmap_max_length) {
-            bit_array_push(&bit_array, clear_code, code_size);
-#ifdef DEBUG_LOG
-            printf("---CLEAR---\n");
-            printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
-                   _temp_i,
-                   code_size,
-                   clear_code,
-                   clear_code);
-            printf("Code size: %hhu\n", code_size);
-#endif
-            _temp_i++;
-            hashmap_clear(&hashmap);
-            lzw_hashmap_reset(&hashmap, eoi_code, allocator);
-            code_size = min_code_size + 1;
-        } else if (hashmap.length + 2 > (1 << code_size)) {
-            code_size++;
-        }
     }
 
     u16* idx = hashmap_byte_string_get(

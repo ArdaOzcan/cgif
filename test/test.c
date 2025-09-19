@@ -110,7 +110,7 @@ test_encode_256(const MunitParameter params[], void* user_data_or_fixture)
     GIFObject gif_object = { .color_table = cat256_colors,
                              .indices = cat256_indices,
                              .metadata = metadata };
-    gif_export(gif_object, 4096, 254, "out/out256_test.gif");
+    gif_export(gif_object, 4095, 254, "out/out256_test.gif");
     assert_binary_files_equal("out/out256_test.gif",
                               "test/test-images/cat256.gif");
 
@@ -118,30 +118,64 @@ test_encode_256(const MunitParameter params[], void* user_data_or_fixture)
 }
 
 static MunitResult
-test_encode_woman_256(const MunitParameter params[], void* user_data_or_fixture)
+test_decode_woman_256(const MunitParameter params[], void* user_data_or_fixture)
 {
-    GIFMetadata metadata = { 0 };
-    size_t size = 0;
-    unsigned char* file_data =
-      read_file_to_buffer("test/test-images/woman256.gif", &size);
-
-    size_t cursor = 0;
-
-    cursor += gif_read_header(file_data, &metadata.version);
-    cursor += gif_read_logical_screen_descriptor(file_data + cursor, &metadata);
-    GIFColor* colors =
-      malloc(sizeof(GIFColor) * (1 << (metadata.gct_size_n + 1)));
-    cursor += gif_read_global_color_table(
-      file_data + cursor, metadata.gct_size_n, colors);
-    metadata.min_code_size = 8;
-    metadata.has_graphic_control = false;
-
-    GIFGraphicControl graphic_control = { 0 };
+    GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
+                                          .background = 0xe7,
+                                          .color_resolution = 6,
+                                          .sort = 0,
+                                          .local_color_table = 0,
+                                          .pixel_aspect_ratio = 0,
+                                          .min_code_size = 8,
+                                          .gct_size_n = 7,
+                                          .left = 0,
+                                          .top = 0,
+                                          .width = 256,
+                                          .height = 256,
+                                          .has_graphic_control = false,
+                                          .has_gct = true };
     GIFObject gif_object = { .color_table = woman256_colors,
                              .indices = woman256_indices,
-                             .graphic_control = graphic_control,
                              .metadata = metadata };
-    gif_export(gif_object, 4097, 254, "out/test_woman_256.gif");
+    gif_export(gif_object, 4096, 254, "out/test_woman_256.gif");
+
+    size_t size = 0;
+    unsigned char* bytes = read_file_to_buffer("out/test_woman_256.gif", &size);
+    GIFObject imported_gif = { 0 };
+
+    gif_import(bytes, &imported_gif);
+
+    munit_assert_memory_equal(metadata.width * metadata.height *
+                                sizeof(uint8_t),
+                              imported_gif.indices,
+                              woman256_indices);
+    free(bytes);
+    free(imported_gif.indices);
+    free(imported_gif.color_table);
+
+    return MUNIT_OK;
+}
+static MunitResult
+test_encode_woman_256(const MunitParameter params[], void* user_data_or_fixture)
+{
+    GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
+                                          .background = 0xe7,
+                                          .color_resolution = 6,
+                                          .sort = 0,
+                                          .local_color_table = 0,
+                                          .pixel_aspect_ratio = 0,
+                                          .min_code_size = 8,
+                                          .gct_size_n = 7,
+                                          .left = 0,
+                                          .top = 0,
+                                          .width = 256,
+                                          .height = 256,
+                                          .has_graphic_control = false,
+                                          .has_gct = true };
+    GIFObject gif_object = { .color_table = woman256_colors,
+                             .indices = woman256_indices,
+                             .metadata = metadata };
+    gif_export(gif_object, 4096, 254, "out/test_woman_256.gif");
 
     assert_binary_files_equal("out/test_woman_256.gif",
                               "test/test-images/woman256.gif");
@@ -176,7 +210,7 @@ test_encode_test_256(const MunitParameter params[], void* user_data_or_fixture)
                              .indices = test_indices,
                              .graphic_control = graphic_control,
                              .metadata = metadata };
-    gif_export(gif_object, 4097, 254, "out/test_test.gif");
+    gif_export(gif_object, 4096, 254, "out/test_test.gif");
 
     assert_binary_files_equal("out/test_test.gif",
                               "test/test-images/test.gif");
@@ -474,6 +508,14 @@ static MunitTest tests[] = {
     {
       "test_encode_test_256", /* name */
       test_encode_test_256,   /* test */
+      NULL,                    /* setup */
+      NULL,                    /* tear_down */
+      MUNIT_TEST_OPTION_NONE,  /* options */
+      NULL                     /* parameters */
+    },
+    {
+      "test_decode_woman_256", /* name */
+      test_decode_woman_256,   /* test */
       NULL,                    /* setup */
       NULL,                    /* tear_down */
       MUNIT_TEST_OPTION_NONE,  /* options */
