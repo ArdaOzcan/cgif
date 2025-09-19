@@ -38,7 +38,7 @@ read_file_to_buffer(const char* filename, size_t* file_size)
 };
 
 int
-main(void)
+_main(void)
 {
     GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
                                           .background = 0x0f,
@@ -68,7 +68,7 @@ main(void)
 #include <stdlib.h>
 
 int
-_main(void)
+__main(void)
 {
     const int screenWidth = 256;
     const int screenHeight = 256;
@@ -134,7 +134,7 @@ _main(void)
 }
 
 int
-___main(void)
+main(void)
 {
     GIFMetadata metadata = { 0 };
     size_t size = 0;
@@ -150,16 +150,14 @@ ___main(void)
     cursor += gif_read_global_color_table(
       file_data + cursor, metadata.gct_size_n, colors);
     metadata.min_code_size = 8;
-    metadata.has_graphic_control = true;
+    metadata.has_graphic_control = false;
 
     GIFGraphicControl graphic_control = { 0 };
-    cursor +=
-      gif_read_graphic_control_extension(file_data + cursor, &graphic_control);
 
     GIFObject gif_object = { .color_table = woman256_colors,
                              .indices = woman256_indices,
                              .graphic_control = graphic_control,
                              .metadata = metadata };
-    gif_export(gif_object, 4098, 255, "out/test_woman_256.gif");
+    gif_export(gif_object, 4097, 254, "out/test_woman_256.gif");
     return 0;
 }

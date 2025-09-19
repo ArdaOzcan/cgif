@@ -8,7 +8,7 @@
 #include "ccore.h"
 
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
-#define LZW_ALLOC_SIZE 3 * MEGABYTE
+#define LZW_ALLOC_SIZE 16 * MEGABYTE
 
 #define INPUT_BUFFER_CAP 256
 
@@ -332,8 +332,6 @@ gif_compress_lzw(Allocator* allocator,
         key->ptr = (char*)appended_copy;
 
         u16* val = make(u16, 1, allocator);
-        // +2 is for CLEAR and EOI codes, which are not actually in the
-        // hashmap.
         *val = hashmap.length + 2;
 
         hashmap_insert(&hashmap, key, val);
@@ -381,6 +379,7 @@ gif_compress_lzw(Allocator* allocator,
         array_len(input_buf) = 0;
         array_append(input_buf, k);
 
+        // +2 for CLEAR and EOI codes.
         if (hashmap.length + 2 >= lzw_hashmap_max_length) {
             bit_array_push(&bit_array, clear_code, code_size);
 #ifdef DEBUG_LOG
