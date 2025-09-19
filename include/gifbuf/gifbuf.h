@@ -31,7 +31,8 @@ typedef struct
     bool has_graphic_control;
 } GIFMetadata;
 
-typedef struct {
+typedef struct
+{
     uint8_t disposal_method;
     bool user_input_flag;
     bool transparent_color_flag;
@@ -39,7 +40,8 @@ typedef struct {
     uint8_t transparent_color_index;
 } GIFGraphicControl;
 
-typedef struct {
+typedef struct
+{
     GIFMetadata metadata;
     GIFColor* color_table;
     GIFGraphicControl graphic_control;
@@ -47,11 +49,12 @@ typedef struct {
 } GIFObject;
 
 void
-gif_import(const uint8_t* file_data,
-           GIFObject* gif_object);
+gif_import(const uint8_t* file_data, GIFObject* gif_object);
 
 void
 gif_export(GIFObject gif_object,
+           size_t lzw_hashmap_max_length,
+           size_t max_block_length,
            const char* out_path);
 
 size_t
@@ -61,7 +64,8 @@ gif_read_logical_screen_descriptor(const uint8_t* bytes, GIFMetadata* metadata);
 size_t
 gif_read_global_color_table(const uint8_t* bytes, uint8_t N, GIFColor* colors);
 size_t
-gif_read_graphic_control_extension(const uint8_t* bytes, GIFGraphicControl* graphic_control);
+gif_read_graphic_control_extension(const uint8_t* bytes,
+                                   GIFGraphicControl* graphic_control);
 size_t
 gif_read_img_descriptor(const uint8_t* bytes, GIFMetadata* metadata);
 

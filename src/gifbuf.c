@@ -10,10 +10,8 @@
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
 #define LZW_ALLOC_SIZE 3 * MEGABYTE
 
-#define GIF_MAX_BLOCK_LENGTH 254
 #define INPUT_BUFFER_CAP 256
 
-#define LZW_DICT_MAX_CAP 4096
 #define LZW_DICT_MIN_CAP 2048
 
 #define BIT_ARRAY_MIN_CAP 2 * KILOBYTE
@@ -263,13 +261,14 @@ gif_decompress_lzw(const u8* compressed,
 
 u8*
 gif_compress_lzw(Allocator* allocator,
+                 size_t lzw_hashmap_max_length,
                  u8 min_code_size,
                  const u8* indices,
                  size_t indices_len,
                  size_t* compressed_len)
 {
     Hashmap hashmap = { 0 };
-    hashmap_byte_string_init(&hashmap, LZW_DICT_MAX_CAP, allocator);
+    hashmap_byte_string_init(&hashmap, lzw_hashmap_max_length, allocator);
     const size_t clear_code = 1 << min_code_size;
     const size_t eoi_code = clear_code + 1;
 
@@ -333,10 +332,11 @@ gif_compress_lzw(Allocator* allocator,
         key->ptr = (char*)appended_copy;
 
         u16* val = make(u16, 1, allocator);
+        // +2 is for CLEAR and EOI codes, which are not actually in the
+        // hashmap.
         *val = hashmap.length + 2;
 
         hashmap_insert(&hashmap, key, val);
-        // printf("'%s': %d\n", key, *val);
 
         u16* idx = hashmap_byte_string_get(
           &hashmap,
@@ -381,7 +381,7 @@ gif_compress_lzw(Allocator* allocator,
         array_len(input_buf) = 0;
         array_append(input_buf, k);
 
-        if (hashmap.length + 2 > LZW_DICT_MAX_CAP) {
+        if (hashmap.length + 2 >= lzw_hashmap_max_length) {
             bit_array_push(&bit_array, clear_code, code_size);
 #ifdef DEBUG_LOG
             printf("---CLEAR---\n");
@@ -682,6 +682,7 @@ gif_read_img_data(const u8* in_bytes, u8* lzw_min_code, u8* out_bytes)
 void
 gif_write_img_data(VArena* gif_data,
                    u8 lzw_min_code,
+                   size_t max_block_length,
                    u8* bytes,
                    size_t bytes_length)
 {
@@ -690,9 +691,8 @@ gif_write_img_data(VArena* gif_data,
 
     size_t bytes_left = bytes_length;
     while (bytes_left) {
-        u8 block_length = bytes_left >= GIF_MAX_BLOCK_LENGTH
-                            ? GIF_MAX_BLOCK_LENGTH
-                            : bytes_left;
+        u8 block_length =
+          bytes_left >= max_block_length ? max_block_length : bytes_left;
         varena_push_copy(gif_data, &block_length, sizeof(u8));
         varena_push_copy(gif_data,
                          &bytes[bytes_length - bytes_left],
@@ -771,7 +771,10 @@ gif_import(const u8* file_data, GIFObject* gif_object)
 }
 
 void
-gif_export(GIFObject gif_object, const char* out_path)
+gif_export(GIFObject gif_object,
+           size_t lzw_hashmap_max_length,
+           size_t max_block_length,
+           const char* out_path)
 {
     VArena gif_data;
     varena_init_ex(&gif_data, GIF_ALLOC_SIZE, system_page_size(), 1);
@@ -794,13 +797,17 @@ gif_export(GIFObject gif_object, const char* out_path)
     size_t compressed_len = 0;
     u8* compressed =
       gif_compress_lzw(&lzw_alloc,
+                       lzw_hashmap_max_length,
                        gif_object.metadata.min_code_size,
                        gif_object.indices,
                        gif_object.metadata.width * gif_object.metadata.height,
                        &compressed_len);
 
-    gif_write_img_data(
-      &gif_data, gif_object.metadata.min_code_size, compressed, compressed_len);
+    gif_write_img_data(&gif_data,
+                       gif_object.metadata.min_code_size,
+                       max_block_length,
+                       compressed,
+                       compressed_len);
     gif_write_trailer(&gif_data);
 
     FILE* file = fopen(out_path, "wb");

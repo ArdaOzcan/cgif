@@ -38,7 +38,7 @@ read_file_to_buffer(const char* filename, size_t* file_size)
 };
 
 int
-_main(void)
+main(void)
 {
     GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
                                           .background = 0x0f,
@@ -58,7 +58,7 @@ _main(void)
     GIFObject gif_object = { .color_table = cat256_colors,
                              .indices = cat256_indices,
                              .metadata = metadata };
-    gif_export(gif_object, "out/out256_test.gif");
+    gif_export(gif_object, 4096, 254, "out/out256_test.gif");
 
     return 0;
 }
@@ -68,7 +68,7 @@ _main(void)
 #include <stdlib.h>
 
 int
-main(void)
+_main(void)
 {
     const int screenWidth = 256;
     const int screenHeight = 256;
@@ -160,6 +160,6 @@ ___main(void)
                              .indices = woman256_indices,
                              .graphic_control = graphic_control,
                              .metadata = metadata };
-    gif_export(gif_object, "out/test_woman_256.gif");
+    gif_export(gif_object, 4098, 255, "out/test_woman_256.gif");
     return 0;
 }

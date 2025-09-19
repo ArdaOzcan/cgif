@@ -109,7 +109,7 @@ test_encode_256(const MunitParameter params[], void* user_data_or_fixture)
     GIFObject gif_object = { .color_table = cat256_colors,
                              .indices = cat256_indices,
                              .metadata = metadata };
-    gif_export(gif_object, "out/out256_test.gif");
+    gif_export(gif_object, 4096, 254, "out/out256_test.gif");
     assert_binary_files_equal("out/out256_test.gif",
                               "test/test-images/cat256.gif");
 
@@ -143,7 +143,7 @@ test_encode_woman_256(const MunitParameter params[], void* user_data_or_fixture)
                              .indices = woman256_indices,
                              .graphic_control = graphic_control,
                              .metadata = metadata };
-    gif_export(gif_object, "out/test_woman_256.gif");
+    gif_export(gif_object, 4097, 255, "out/test_woman_256.gif");
 
     assert_binary_files_equal("out/test_woman_256.gif",
                               "test/test-images/woman256.gif");
@@ -181,7 +181,7 @@ test_encode_64(const MunitParameter params[], void* user_data_or_fixture)
                              .indices = cat64_indices,
                              .graphic_control = graphic_control };
 
-    gif_export(gif_object, "out/out64_test.gif");
+    gif_export(gif_object, 4098, 254, "out/out64_test.gif");
     assert_binary_files_equal("out/out64_test.gif",
                               "test/test-images/cat64.gif");
 
@@ -209,7 +209,7 @@ test_encode_16(const MunitParameter params[], void* user_data_or_fixture)
     GIFObject gif_object = { .color_table = cat16_colors,
                              .indices = cat16_indices,
                              .metadata = metadata };
-    gif_export(gif_object, "out/out16_test.gif");
+    gif_export(gif_object, 4096, 254, "out/out16_test.gif");
     assert_binary_files_equal("out/out16_test.gif",
                               "test/test-images/cat16.gif");
 
@@ -237,7 +237,7 @@ test_decode_16(const MunitParameter params[], void* user_data_or_fixture)
     GIFObject gif_object = { .color_table = cat16_colors,
                              .indices = cat16_indices,
                              .metadata = metadata };
-    gif_export(gif_object, "out/out16_test.gif");
+    gif_export(gif_object, 4096, 254, "out/out16_test.gif");
 
     size_t size = 0;
     unsigned char* bytes = read_file_to_buffer("out/out16_test.gif", &size);
@@ -277,7 +277,7 @@ test_decode_64(const MunitParameter params[], void* user_data_or_fixture)
     GIFObject gif_object = { .color_table = cat64_colors,
                              .indices = cat64_indices,
                              .metadata = metadata };
-    gif_export(gif_object, "out/out64_test.gif");
+    gif_export(gif_object, 4096, 254, "out/out64_test.gif");
 
     size_t size = 0;
     unsigned char* bytes = read_file_to_buffer("out/out64_test.gif", &size);
@@ -317,7 +317,7 @@ test_decode_256(const MunitParameter params[], void* user_data_or_fixture)
     GIFObject gif_object = { .color_table = cat256_colors,
                              .indices = cat256_indices,
                              .metadata = metadata };
-    gif_export(gif_object, "out/out256_test.gif");
+    gif_export(gif_object, 4096, 254, "out/out256_test.gif");
 
     size_t size = 0;
     unsigned char* bytes = read_file_to_buffer("out/out256_test.gif", &size);
@@ -358,7 +358,7 @@ test_read_metadata(const MunitParameter params[], void* user_data_or_fixture)
                              .indices = cat64_indices,
                              .color_table = cat64_colors };
 
-    gif_export(gif_object, "out/test_read_metadata.gif");
+    gif_export(gif_object, 4096, 254, "out/test_read_metadata.gif");
 
     size_t size = 0;
     unsigned char* file_data = read_file_to_buffer("out/out64_test.gif", &size);
@@ -431,20 +431,20 @@ static MunitTest tests[] = {
       NULL                    /* parameters */
     },
     {
-      "test_encode_woman_256", /* name */
-      test_encode_woman_256,   /* test */
-      NULL,                    /* setup */
-      NULL,                    /* tear_down */
-      MUNIT_TEST_OPTION_NONE,  /* options */
-      NULL                     /* parameters */
-    },
-    {
       "test_decode_256",      /* name */
       test_decode_256,        /* test */
       NULL,                   /* setup */
       NULL,                   /* tear_down */
       MUNIT_TEST_OPTION_NONE, /* options */
       NULL                    /* parameters */
+    },
+    {
+      "test_encode_woman_256", /* name */
+      test_encode_woman_256,   /* test */
+      NULL,                    /* setup */
+      NULL,                    /* tear_down */
+      MUNIT_TEST_OPTION_NONE,  /* options */
+      NULL                     /* parameters */
     },
     {
       "test_read_metadata",   /* name */
