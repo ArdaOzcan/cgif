@@ -1,6 +1,7 @@
 #include "../test/test-images/cat16.h"
 #include "../test/test-images/cat256.h"
 #include "../test/test-images/cat64.h"
+#include "../test/test-images/woman256.h"
 #include <gifbuf/gifbuf.h>
 
 #include <stdbool.h>
@@ -37,7 +38,7 @@ read_file_to_buffer(const char* filename, size_t* file_size)
 };
 
 int
-main(void)
+_main(void)
 {
     GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
                                           .background = 0x0f,
@@ -67,7 +68,7 @@ main(void)
 #include <stdlib.h>
 
 int
-_main(void)
+main(void)
 {
     const int screenWidth = 256;
     const int screenHeight = 256;
@@ -75,7 +76,8 @@ _main(void)
     InitWindow(screenWidth, screenHeight, "Pixel buffer example");
 
     size_t size = 0;
-    unsigned char* bytes = read_file_to_buffer("out/out256_test.gif", &size);
+    unsigned char* bytes =
+      read_file_to_buffer("test/test-images/woman256.gif", &size);
     GIFObject gif_object = { 0 };
     gif_import(bytes, &gif_object);
 
@@ -128,5 +130,36 @@ _main(void)
     UnloadTexture(texture);
     CloseWindow();
 
+    return 0;
+}
+
+int
+___main(void)
+{
+    GIFMetadata metadata = { 0 };
+    size_t size = 0;
+    unsigned char* file_data =
+      read_file_to_buffer("test/test-images/woman256.gif", &size);
+
+    size_t cursor = 0;
+
+    cursor += gif_read_header(file_data, &metadata.version);
+    cursor += gif_read_logical_screen_descriptor(file_data + cursor, &metadata);
+    GIFColor* colors =
+      malloc(sizeof(GIFColor) * (1 << (metadata.gct_size_n + 1)));
+    cursor += gif_read_global_color_table(
+      file_data + cursor, metadata.gct_size_n, colors);
+    metadata.min_code_size = 8;
+    metadata.has_graphic_control = true;
+
+    GIFGraphicControl graphic_control = { 0 };
+    cursor +=
+      gif_read_graphic_control_extension(file_data + cursor, &graphic_control);
+
+    GIFObject gif_object = { .color_table = woman256_colors,
+                             .indices = woman256_indices,
+                             .graphic_control = graphic_control,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/test_woman_256.gif");
     return 0;
 }

@@ -3,6 +3,7 @@
 #include "test-images/cat16.h"
 #include "test-images/cat256.h"
 #include "test-images/cat64.h"
+#include "test-images/woman256.h"
 #include <gifbuf/gifbuf.h>
 
 #include <stdio.h>
@@ -111,6 +112,41 @@ test_encode_256(const MunitParameter params[], void* user_data_or_fixture)
     gif_export(gif_object, "out/out256_test.gif");
     assert_binary_files_equal("out/out256_test.gif",
                               "test/test-images/cat256.gif");
+
+    return MUNIT_OK;
+}
+
+static MunitResult
+test_encode_woman_256(const MunitParameter params[], void* user_data_or_fixture)
+{
+    GIFMetadata metadata = { 0 };
+    size_t size = 0;
+    unsigned char* file_data =
+      read_file_to_buffer("test/test-images/woman256.gif", &size);
+
+    size_t cursor = 0;
+
+    cursor += gif_read_header(file_data, &metadata.version);
+    cursor += gif_read_logical_screen_descriptor(file_data + cursor, &metadata);
+    GIFColor* colors =
+      malloc(sizeof(GIFColor) * (1 << (metadata.gct_size_n + 1)));
+    cursor += gif_read_global_color_table(
+      file_data + cursor, metadata.gct_size_n, colors);
+    metadata.min_code_size = 8;
+    metadata.has_graphic_control = true;
+
+    GIFGraphicControl graphic_control = { 0 };
+    cursor +=
+      gif_read_graphic_control_extension(file_data + cursor, &graphic_control);
+
+    GIFObject gif_object = { .color_table = woman256_colors,
+                             .indices = woman256_indices,
+                             .graphic_control = graphic_control,
+                             .metadata = metadata };
+    gif_export(gif_object, "out/test_woman_256.gif");
+
+    assert_binary_files_equal("out/test_woman_256.gif",
+                              "test/test-images/woman256.gif");
 
     return MUNIT_OK;
 }
@@ -393,6 +429,14 @@ static MunitTest tests[] = {
       NULL,                   /* tear_down */
       MUNIT_TEST_OPTION_NONE, /* options */
       NULL                    /* parameters */
+    },
+    {
+      "test_encode_woman_256", /* name */
+      test_encode_woman_256,   /* test */
+      NULL,                    /* setup */
+      NULL,                    /* tear_down */
+      MUNIT_TEST_OPTION_NONE,  /* options */
+      NULL                     /* parameters */
     },
     {
       "test_decode_256",      /* name */

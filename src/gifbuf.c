@@ -8,7 +8,7 @@
 #include "ccore.h"
 
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
-#define LZW_ALLOC_SIZE 1 * MEGABYTE
+#define LZW_ALLOC_SIZE 3 * MEGABYTE
 
 #define GIF_MAX_BLOCK_LENGTH 254
 #define INPUT_BUFFER_CAP 256
@@ -20,7 +20,7 @@
 
 #define LSB_MASK(length) ((1 << (length)) - 1)
 
-#define DEBUG_LOG
+// #define DEBUG_LOG
 
 typedef struct
 {
@@ -123,16 +123,20 @@ bit_array_pad_last_byte(BitArray* bit_array)
 void
 lzw_hashmap_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
 {
-    for (u16 i = 0; i <= eoi_code; i++) {
-        u8* char_i = array(u8, 1, allocator);
-        array_append(char_i, i);
+    for (u16 i = 0; i <= eoi_code - 2; i++) {
+        u8* key_string = array(u8, 1, allocator);
+        array_append(key_string, i);
+
         u16* val = make(u16, 1, allocator);
         *val = i;
 
         ByteString* key = make(ByteString, 1, allocator);
-        key->ptr = (char*)char_i;
+        key->ptr = (char*)key_string;
         key->length = 1;
-        hashmap_insert(hashmap, (char*)key, val);
+        if (hashmap_insert(hashmap, key, val) == 1) {
+            fprintf(
+              stderr, "Key %.*s was already in hashmap.\n", 1, (char*)key);
+        }
     }
 }
 
@@ -206,6 +210,12 @@ gif_decompress_lzw(const u8* compressed,
             continue;
         }
 
+        if (code_table[previous_code] == NULL) {
+            fprintf(stderr,
+                    "Previous code %d was not in the code table.\n",
+                    previous_code);
+        }
+        assert(code_table[previous_code] != NULL);
         size_t previous_code_length = array_len(code_table[previous_code]);
         u8* new_entry = array(u8, previous_code_length + 1, allocator);
         for (int i = 0; i < previous_code_length; i++)
@@ -264,6 +274,7 @@ gif_compress_lzw(Allocator* allocator,
     const size_t eoi_code = clear_code + 1;
 
     lzw_hashmap_reset(&hashmap, eoi_code, allocator);
+    printf("Hashmap length after reset: %zu\n", hashmap.length);
 
     u8* bit_array_buf = array(u8, BIT_ARRAY_MIN_CAP, allocator);
     BitArray bit_array = { 0 };
@@ -295,17 +306,14 @@ gif_compress_lzw(Allocator* allocator,
         // printf(
         //   "WRITE: Index[%zu]: %hhu ('%c')\n", i, indices[i], '0' +
         //   indices[i]);
-        printf("Input Buffer: ");
+        printf("Input Buffer (Length=%zu): ", array_len(input_buf));
         for (int i = 0; i < array_len(input_buf); i++) {
-            printf("%c", input_buf[i] + '0');
+            printf("%d, ", input_buf[i]);
         }
         printf("\n");
 #endif
 
-        array_len(appended) = 0;
-        for (int i = 0; i < array_len(input_buf); i++) {
-            array_append(appended, input_buf[i]);
-        }
+        array_assign(appended, input_buf);
         array_append(appended, k);
 
         char* result = hashmap_byte_string_get(
@@ -319,17 +327,13 @@ gif_compress_lzw(Allocator* allocator,
             continue;
         }
 
-        // TODO: Implement an array copy in ccore.
-        u8* appended_copy = array(u8, array_len(appended), allocator);
-        for (int i = 0; i < array_len(appended); i++) {
-            array_append(appended_copy, appended[i]);
-        }
+        u8* appended_copy = (u8*)array_copy(appended, allocator);
         ByteString* key = make(ByteString, 1, allocator);
         key->length = array_len(appended);
         key->ptr = (char*)appended_copy;
 
         u16* val = make(u16, 1, allocator);
-        *val = hashmap.length;
+        *val = hashmap.length + 2;
 
         hashmap_insert(&hashmap, key, val);
         // printf("'%s': %d\n", key, *val);
@@ -339,6 +343,16 @@ gif_compress_lzw(Allocator* allocator,
           (ByteString){ .ptr = (char*)input_buf,
                         .length = array_len(input_buf) });
 
+#ifdef DEBUG_LOG
+        if (idx == NULL) {
+            fprintf(stderr, "Key was not present in hashmap: ");
+            uint i = 0;
+            for (i = 0; i < array_len(input_buf); i++) {
+                fprintf(stderr, "%c", input_buf[i] + '0');
+            }
+            fprintf(stderr, "\n");
+        }
+#endif
         assert(idx != NULL);
 
         bit_array_push(&bit_array, *idx, code_size);
@@ -346,7 +360,7 @@ gif_compress_lzw(Allocator* allocator,
         printf("~~~~FOUND~~~~\n");
         printf("Dict['");
         for (int i = 0; i < key->length; i++) {
-            printf("%c", key->ptr[i] + '0');
+            printf("<%d>", (unsigned char)key->ptr[i]);
         }
         printf("'] = %d\n", *val);
         printf("WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
@@ -367,7 +381,7 @@ gif_compress_lzw(Allocator* allocator,
         array_len(input_buf) = 0;
         array_append(input_buf, k);
 
-        if (hashmap.length >= LZW_DICT_MAX_CAP) {
+        if (hashmap.length + 2 > LZW_DICT_MAX_CAP) {
             bit_array_push(&bit_array, clear_code, code_size);
 #ifdef DEBUG_LOG
             printf("---CLEAR---\n");
@@ -382,7 +396,7 @@ gif_compress_lzw(Allocator* allocator,
             hashmap_clear(&hashmap);
             lzw_hashmap_reset(&hashmap, eoi_code, allocator);
             code_size = min_code_size + 1;
-        } else if (hashmap.length > (1 << code_size)) {
+        } else if (hashmap.length + 2 > (1 << code_size)) {
             code_size++;
         }
     }
@@ -505,8 +519,9 @@ void
 gif_write_global_color_table(VArena* gif_data, const GIFColor* colors)
 {
     u8 N = ((u8*)gif_data->base)[10] & LSB_MASK(3);
-    u8 colorAmount = 1 << (N + 1);
-    for (u8 i = 0; i < colorAmount; i++) {
+    uint color_amount = 1 << (N + 1);
+    uint i = 0;
+    for (i = 0; i < color_amount; i++) {
         varena_push_copy(gif_data, &colors[i], sizeof(GIFColor));
     }
 }
@@ -514,9 +529,53 @@ gif_write_global_color_table(VArena* gif_data, const GIFColor* colors)
 size_t
 gif_read_graphic_control_extension(const u8* bytes, GIFGraphicControl* output)
 {
-    // Read the dummy bytes for now.
-    // memcpy(output, bytes, 8 * sizeof(u8));
-    return 8;
+    const u8 introducer = 0x21;
+    const u8 control_label = 0xf9;
+    const u8 block_size = 0x4;
+    const u8 terminator = 0x00;
+
+    size_t cursor = 0;
+    if (bytes[cursor] != introducer) {
+        fprintf(stderr,
+                "Graphic Control Extension should start with byte 0x%x\n",
+                introducer);
+    }
+    cursor += sizeof(u8);
+    if (bytes[cursor] != control_label) {
+        fprintf(stderr,
+                "Graphic Control Extension should start with bytes 0x%x 0x%x\n",
+                introducer,
+                control_label);
+    }
+    cursor += sizeof(u8);
+    if (bytes[cursor] != block_size) {
+        fprintf(stderr,
+                "Graphic Control Extension should have block size of %x\n",
+                block_size);
+    }
+    cursor += sizeof(u8);
+
+    u8 packed = bytes[cursor];
+    cursor += sizeof(u8);
+
+    output->disposal_method = (packed >> 3) & LSB_MASK(3);
+    output->user_input_flag = (packed >> 1) & LSB_MASK(1);
+    output->transparent_color_flag = packed & LSB_MASK(1);
+
+    output->delay_time = bytes[cursor];
+    cursor += sizeof(u16);
+    output->transparent_color_index = bytes[cursor];
+    cursor += sizeof(u8);
+
+    if (bytes[cursor] != terminator) {
+        fprintf(stderr,
+                "Graphic Control Extension should end with terminator %x\n",
+                terminator);
+    }
+    cursor += sizeof(u8);
+
+    assert(cursor == 8);
+    return cursor;
 }
 
 void
@@ -591,7 +650,7 @@ gif_write_img_descriptor(VArena* gif_data, const GIFMetadata* metadata)
 
 // Reads the data blocks and writes all bytes to a continous buffer.
 size_t
-gif_read_img_data(const u8* in_bytes, u8 lzw_min_code, u8* out_bytes)
+gif_read_img_data(const u8* in_bytes, u8* lzw_min_code, u8* out_bytes)
 {
     size_t read_cursor = 0;
     size_t write_cursor = 0;
@@ -701,7 +760,7 @@ gif_import(const u8* file_data, GIFObject* gif_object)
 
     u8* compressed = array(u8, pixel_amount, &lzw_alloc);
     gif_read_img_data(
-      file_data + cursor, gif_object->metadata.min_code_size, compressed);
+      file_data + cursor, &gif_object->metadata.min_code_size, compressed);
 
     gif_object->indices = calloc(pixel_amount, sizeof(u8));
     gif_decompress_lzw(compressed,
