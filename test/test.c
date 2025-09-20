@@ -126,7 +126,7 @@ test_decode_woman_256(const MunitParameter params[], void* user_data_or_fixture)
                                           .sort = 0,
                                           .local_color_table = 0,
                                           .pixel_aspect_ratio = 0,
-                                          .min_code_size = 8,
+                                          .min_code_size = 7,
                                           .gct_size_n = 7,
                                           .left = 0,
                                           .top = 0,

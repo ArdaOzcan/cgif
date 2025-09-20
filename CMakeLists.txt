@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.10)
-
 project(GifBuf C)
 
 set(CMAKE_C_STANDARD 99)
@@ -19,6 +18,13 @@ FetchContent_Declare(
     GIT_TAG main
 )
 FetchContent_MakeAvailable(ccore)
+
+FetchContent_Declare(
+    clog
+    GIT_REPOSITORY https://github.com/ArdaOzcan/clog.git
+    GIT_TAG master
+)
+FetchContent_MakeAvailable(clog)
 
 
 FetchContent_Declare(
@@ -53,12 +59,12 @@ target_include_directories(gifbuf
     PRIVATE
         ${CMAKE_SOURCE_DIR}/src
 )
-target_link_libraries(gifbuf PUBLIC ccore)
+target_link_libraries(gifbuf PUBLIC ccore clog)
 
 find_library(raylib raylib)
 add_executable(gifbuf_example ${MAIN_FILE})
 target_include_directories(gifbuf_example PRIVATE ${CMAKE_SOURCE_DIR}/include)
-target_link_libraries(gifbuf_example PRIVATE gifbuf ccore raylib)
+target_link_libraries(gifbuf_example PRIVATE gifbuf raylib)
 
 add_executable(test ${TEST_FILES})
 target_include_directories(test PRIVATE ${munit_SOURCE_DIR})

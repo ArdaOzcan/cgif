@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "ccore.h"
+#include "clog.h"
 
 #define GIF_ALLOC_SIZE 1 * MEGABYTE
 #define LZW_ALLOC_SIZE 16 * MEGABYTE
@@ -17,8 +18,6 @@
 #define BIT_ARRAY_MIN_CAP 2 * KILOBYTE
 
 #define LSB_MASK(length) ((1 << (length)) - 1)
-
-// #define DEBUG_LOG
 
 typedef struct
 {
@@ -98,7 +97,7 @@ bit_array_push(BitArray* bit_array, u16 data, u8 bit_amount)
         data >>= split_bit_amount;
 
         array_append(bit_array->array, bit_array->next_byte);
-        // printf("%zu: 0x%02x\n",
+        // CLOG_DEBUG("%zu: 0x%02x",
         //        array_len(bit_array->array),
         //        bit_array->current_byte);
         bit_array->next_byte = 0;
@@ -158,24 +157,23 @@ gif_decompress_lzw(const u8* compressed,
     BitArrayReader bit_reader = { 0 };
     // Read initial clear code
     u16 code = bit_array_read(compressed, &bit_reader, code_size);
+
     int _temp_i = 0;
-#ifdef DEBUG_LOG
-    printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
-    printf("Code size: %hhu\n", code_size);
-#endif
+
+    CLOG_DEBUG("READ Code[%d]: 0b%0*b (%d)", _temp_i, code_size, code, code);
+    CLOG_DEBUG("Code size: %hhu", code_size);
     _temp_i++;
 
     if (code != clear_code) {
-        printf("First byte should be the clear code!!\n");
+        CLOG_DEBUG("First byte should be the clear code!!");
     }
 
     size_t indices_len = 0;
     // Initial code after clear (in order to set previous_code)
     code = bit_array_read(compressed, &bit_reader, code_size);
-#ifdef DEBUG_LOG
-    printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
-    printf("Code size: %hhu\n", code_size);
-#endif
+
+    CLOG_DEBUG("READ Code[%d]: 0b%0*b (%d)", _temp_i, code_size, code, code);
+    CLOG_DEBUG("Code size: %hhu", code_size);
     _temp_i++;
 
     for (int j = 0; j < array_len(code_table[code]); j++) {
@@ -186,20 +184,20 @@ gif_decompress_lzw(const u8* compressed,
 
     while ((code = bit_array_read(compressed, &bit_reader, code_size)) !=
            eoi_code) {
-#ifdef DEBUG_LOG
-        printf("~~~~~~~~\n");
-        printf("READ Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, code, code);
-        printf("from Byte[%zu]: \n", bit_reader.byte_idx);
-        printf("    0b%08b (0x%x)\n",
-               compressed[bit_reader.byte_idx],
-               compressed[bit_reader.byte_idx]);
+
+        CLOG_DEBUG("~~~~~~~~");
+        CLOG_DEBUG(
+          "READ Code[%d]: 0b%0*b (%d)", _temp_i, code_size, code, code);
+        CLOG_DEBUG("from Byte[%zu]: ", bit_reader.byte_idx);
+        CLOG_DEBUG("    0b%08b (0x%x)",
+                   compressed[bit_reader.byte_idx],
+                   compressed[bit_reader.byte_idx]);
         for (int i = -5; i < 7 - bit_reader.bit_idx; i++)
-            printf(" ");
-        printf("-^\n");
-        printf("    Code size: %hhu, Start Bit Index: %d\n",
-               code_size,
-               bit_reader.bit_idx);
-#endif
+            clog_printf_debug(" ");
+        clog_printf_debug("-^\n");
+        CLOG_DEBUG("    Code size: %hhu, Start Bit Index: %d",
+                   code_size,
+                   bit_reader.bit_idx);
         _temp_i++;
 
         if (code == clear_code) {
@@ -230,17 +228,15 @@ gif_decompress_lzw(const u8* compressed,
             used_val = new_entry;
         }
 
-        // printf("k = %x\n", k);
+        // CLOG_DEBUG("k = %x", k);
 
         array_append(new_entry, k);
 
         for (int j = 0; j < array_len(used_val); j++) {
             out_indices[indices_len++] = used_val[j];
-#ifdef DEBUG_LOG
-            printf("READ: Index[%zu]: %hhu\n",
-                   indices_len - 1,
-                   out_indices[indices_len - 1]);
-#endif
+            CLOG_DEBUG("READ: Index[%zu]: %hhu",
+                       indices_len - 1,
+                       out_indices[indices_len - 1]);
         }
 
         array_append(code_table, new_entry);
@@ -251,12 +247,12 @@ gif_decompress_lzw(const u8* compressed,
         previous_code = code;
     }
 
-    printf("Encountered EOI code (%zu) at byte %zu from 0x%02x, completed "
-           "decompression\n",
-           eoi_code,
-           bit_reader.byte_idx,
-           compressed[bit_reader.byte_idx]);
-    printf("Dictionary length was: %zu\n", array_len(code_table));
+    CLOG_DEBUG("Encountered EOI code (%zu) at byte %zu from 0x%02x, completed "
+               "decompression",
+               eoi_code,
+               bit_reader.byte_idx,
+               compressed[bit_reader.byte_idx]);
+    CLOG_DEBUG("Dictionary length was: %zu", array_len(code_table));
 }
 
 u8*
@@ -273,7 +269,7 @@ gif_compress_lzw(Allocator* allocator,
     const size_t eoi_code = clear_code + 1;
 
     lzw_hashmap_reset(&hashmap, eoi_code, allocator);
-    printf("Hashmap length after reset: %zu\n", hashmap.length);
+    CLOG_DEBUG("Hashmap length after reset: %zu", hashmap.length);
 
     u8* bit_array_buf = array(u8, BIT_ARRAY_MIN_CAP, allocator);
     BitArray bit_array = { 0 };
@@ -285,14 +281,12 @@ gif_compress_lzw(Allocator* allocator,
     u8 code_size = min_code_size + 1;
     bit_array_push(&bit_array, clear_code, code_size);
     int _temp_i = 0;
-#ifdef DEBUG_LOG
-    printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
-           _temp_i,
-           code_size,
-           clear_code,
-           clear_code);
-    // printf("Code size: %hhu\n", code_size);
-#endif
+
+    CLOG_DEBUG("WRITE Code[%d]: 0b%0*zb (%zu)",
+               _temp_i,
+               code_size,
+               clear_code,
+               clear_code);
     _temp_i++;
 
     u8* input_buf = array(u8, INPUT_BUFFER_CAP, allocator);
@@ -301,16 +295,9 @@ gif_compress_lzw(Allocator* allocator,
     u8* appended = array(u8, INPUT_BUFFER_CAP, allocator);
     for (size_t i = 1; i < indices_len; i++) {
         char k = indices[i];
-#ifdef DEBUG_LOG
-        // printf(
-        //   "WRITE: Index[%zu]: %hhu ('%c')\n", i, indices[i], '0' +
-        //   indices[i]);
-        printf("Input Buffer (Length=%zu): ", array_len(input_buf));
-        for (int i = 0; i < array_len(input_buf); i++) {
-            printf("%d, ", input_buf[i]);
-        }
-        printf("\n");
-#endif
+        CLOG_DEBUG("Input Buffer (Length=%zu): ", array_len(input_buf));
+        if (clog_log_level_get() <= CLOG_LOG_LEVEL_DEBUG)
+            clog_print_array_u8(input_buf, array_len(input_buf));
 
         array_assign(appended, input_buf);
         array_append(appended, k);
@@ -322,7 +309,7 @@ gif_compress_lzw(Allocator* allocator,
 
         if (result != NULL) {
             array_append(input_buf, k);
-            // printf("INPUT: %s\n", input_buf);
+            // CLOG_DEBUG("INPUT: %s", input_buf);
             continue;
         }
 
@@ -331,16 +318,11 @@ gif_compress_lzw(Allocator* allocator,
           (ByteString){ .ptr = (char*)input_buf,
                         .length = array_len(input_buf) });
 
-#ifdef DEBUG_LOG
         if (idx == NULL) {
-            fprintf(stderr, "Key was not present in hashmap: ");
-            uint i = 0;
-            for (i = 0; i < array_len(input_buf); i++) {
-                fprintf(stderr, "%c", input_buf[i] + '0');
-            }
-            fprintf(stderr, "\n");
+            CLOG_ERROR("Key was not present in hashmap: ");
+            if(clog_log_level_get() <= CLOG_LOG_LEVEL_ERROR)
+                clog_print_array_u8(input_buf, array_len(input_buf));
         }
-#endif
         assert(idx != NULL);
         assert(*idx < lzw_hashmap_max_length);
 
@@ -355,15 +337,15 @@ gif_compress_lzw(Allocator* allocator,
         // +2 for CLEAR and EOI codes.
         if (next_code >= lzw_hashmap_max_length) {
             bit_array_push(&bit_array, clear_code, code_size);
-#ifdef DEBUG_LOG
-            printf("---CLEAR---\n");
-            printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
-                   _temp_i,
-                   code_size,
-                   clear_code,
-                   clear_code);
-            printf("Code size: %hhu\n", code_size);
-#endif
+
+            CLOG_DEBUG("---CLEAR---");
+            CLOG_DEBUG("WRITE Code[%d]: 0b%0*zb (%zu)",
+                       _temp_i,
+                       code_size,
+                       clear_code,
+                       clear_code);
+            CLOG_DEBUG("Code size: %hhu", code_size);
+
             _temp_i++;
             hashmap_clear(&hashmap);
             lzw_hashmap_reset(&hashmap, eoi_code, allocator);
@@ -382,26 +364,28 @@ gif_compress_lzw(Allocator* allocator,
         *val = next_code;
 
         hashmap_insert(&hashmap, key, val);
-#ifdef DEBUG_LOG
-        printf("~~~~FOUND~~~~\n");
-        printf("Dict['");
+
+        CLOG_DEBUG("~~~~FOUND~~~~");
+        clog_printf_debug("Dict['");
         for (int i = 0; i < key->length; i++) {
-            printf("<%d>", (unsigned char)key->ptr[i]);
+            clog_printf_debug("<%d>", (unsigned char)key->ptr[i]);
         }
-        printf("'] = %d\n", *val);
-        printf("WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
-        printf("to Byte[%zu]: \n", array_len(bit_array.array) - 1);
-        printf("    0b%08b (0x%x)\n", bit_array.next_byte, bit_array.next_byte);
+        clog_printf_debug("'] = %d\n", *val);
+        CLOG_DEBUG(
+          "WRITE Code[%d]: 0b%0*b (%d)", _temp_i, code_size, *idx, *idx);
+        CLOG_DEBUG("to Byte[%zu]: ", array_len(bit_array.array) - 1);
+        clog_printf_debug(
+          "    0b%08b (0x%x)\n", bit_array.next_byte, bit_array.next_byte);
         for (int i = -6; i < 7 - bit_array.current_bit_idx; i++)
-            printf(" ");
-        printf("^");
+            clog_printf_debug(" ");
+        clog_printf_debug("^");
         for (int i = 0; i < code_size; i++)
-            printf("-");
-        printf("\n    Code size: %hhu, Current Bit Index: %d\n",
-               code_size,
-               bit_array.current_bit_idx);
-        printf("~~~~~~~~~~~~~\n");
-#endif
+            clog_printf_debug("-");
+        clog_printf_debug("\n");
+        clog_printf_debug("    Code size: %hhu, Current Bit Index: %d\n",
+                          code_size,
+                          bit_array.current_bit_idx);
+        CLOG_DEBUG("~~~~~~~~~~~~~");
     }
 
     u16* idx = hashmap_byte_string_get(
@@ -411,27 +395,23 @@ gif_compress_lzw(Allocator* allocator,
     assert(idx != NULL);
 
     bit_array_push(&bit_array, *idx, code_size);
-#ifdef DEBUG_LOG
-    printf("WRITE Code[%d]: 0b%0*b (%d)\n", _temp_i, code_size, *idx, *idx);
-    printf("Code size: %hhu\n", code_size);
-#endif
+
+    CLOG_DEBUG("WRITE Code[%d]: 0b%0*b (%d)", _temp_i, code_size, *idx, *idx);
+    CLOG_DEBUG("Code size: %hhu", code_size);
     _temp_i++;
 
     bit_array_push(&bit_array, eoi_code, code_size);
-#ifdef DEBUG_LOG
-    printf("WRITE Code[%d]: 0b%0*zb (%zu)\n",
-           _temp_i,
-           code_size,
-           eoi_code,
-           eoi_code);
-    printf("Code size: %hhu\n", code_size);
-#endif
+
+    CLOG_DEBUG(
+      "WRITE Code[%d]: 0b%0*zb (%zu)", _temp_i, code_size, eoi_code, eoi_code);
+    CLOG_DEBUG("Code size: %hhu", code_size);
     _temp_i++;
+
     bit_array_pad_last_byte(&bit_array);
     *compressed_len = array_len(bit_array.array);
-    printf("Dictionary length: %zu\n", hashmap.length);
+    CLOG_DEBUG("Dictionary length: %zu", hashmap.length);
 
-    // printf("0x%x\n",
+    // CLOG_DEBUG("0x%x",
     //        bit_array.array[5608 - 73 - 22]);
 
     return bit_array.array;
@@ -618,8 +598,8 @@ gif_read_img_descriptor(const u8* bytes, GIFMetadata* metadata)
     if (',' == *(bytes + cursor)) {
         cursor += sizeof(char);
     } else {
-        printf("Expected %02x at the beginning of image descriptor section.\n",
-               ',');
+        CLOG_DEBUG(
+          "Expected %02x at the beginning of image descriptor section.", ',');
     }
 
     memcpy(&metadata->left, bytes + cursor, sizeof(u16));
@@ -673,9 +653,10 @@ gif_read_img_data(const u8* in_bytes, u8* lzw_min_code, u8* out_bytes)
         read_cursor += sizeof(u8);
     }
 
-    printf("gif_read_img_data: Compressed data byte length was: %zu (without "
-           "block lengths)\n",
-           write_cursor);
+    CLOG_DEBUG(
+      "gif_read_img_data: Compressed data byte length was: %zu (without "
+      "block lengths)",
+      write_cursor);
 
     return read_cursor;
 }
@@ -713,7 +694,7 @@ gif_read_trailer(const u8* bytes)
     u8 trailer = 0x3B;
     memcpy(&trailer, bytes, 1);
     if (trailer != 0x3B) {
-        fprintf(stderr, "GIF Trailer was not provided. Ignoring...\n");
+        CLOG_ERROR("GIF Trailer was not provided. Ignoring...\n");
     }
     return 1;
 }
@@ -729,7 +710,7 @@ void
 gif_import(const u8* file_data, GIFObject* gif_object)
 {
     if (file_data == NULL) {
-        fprintf(stderr, "File data was NULL. Aborting GIF import\n");
+        CLOG_ERROR("File data was NULL. Aborting GIF import\n");
         return;
     }
 
@@ -779,6 +760,8 @@ gif_export(GIFObject gif_object,
            size_t max_block_length,
            const char* out_path)
 {
+    clog_log_level_set(CLOG_LOG_LEVEL_INFO);
+
     VArena gif_data;
     varena_init_ex(&gif_data, GIF_ALLOC_SIZE, system_page_size(), 1);
 
@@ -796,7 +779,7 @@ gif_export(GIFObject gif_object,
     varena_init(&lzw_arena, LZW_ALLOC_SIZE);
     Allocator lzw_alloc = varena_allocator(&lzw_arena);
 
-    printf("Before compress: %zu\n", gif_data.used);
+    CLOG_INFO("Before compress: %zu", gif_data.used);
     size_t compressed_len = 0;
     u8* compressed =
       gif_compress_lzw(&lzw_alloc,
@@ -818,16 +801,15 @@ gif_export(GIFObject gif_object,
         fwrite(gif_data.base, sizeof(char), gif_data.used, file);
         fclose(file);
     }
-    printf("GIF exported to %s successfully.\n", out_path);
-    printf("GIF Arena used: %.2f%% (%llu/%llu KB)\n",
-           100.0f * gif_data.used / gif_data.size,
-           gif_data.used / KILOBYTE,
-           gif_data.size / KILOBYTE);
-    printf("LZW Arena used: %.2f%% (%llu/%llu KB)\n",
-           100.0f * lzw_arena.used / lzw_arena.size,
-           lzw_arena.used / KILOBYTE,
-           lzw_arena.size / KILOBYTE);
-    printf("\n");
+    CLOG_INFO("GIF exported to %s successfully.", out_path);
+    CLOG_INFO("GIF Arena used: %.2f%% (%llu/%llu KB)",
+              100.0f * gif_data.used / gif_data.size,
+              gif_data.used / KILOBYTE,
+              gif_data.size / KILOBYTE);
+    CLOG_INFO("LZW Arena used: %.2f%% (%llu/%llu KB)",
+              100.0f * lzw_arena.used / lzw_arena.size,
+              lzw_arena.used / KILOBYTE,
+              lzw_arena.size / KILOBYTE);
 
     varena_destroy(&gif_data);
     varena_destroy(&lzw_arena);
