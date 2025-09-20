@@ -49,7 +49,7 @@ bit_array_init(BitArray* bit_array, u8* buffer)
     })
 #endif
 
-// Return value is always aligned to the least significant bit.
+/* Return value is always aligned to the least significant bit. */
 u32
 bit_array_read(const u8* bytes, BitArrayReader* reader, u8 bit_amount)
 {
@@ -97,9 +97,9 @@ bit_array_push(BitArray* bit_array, u16 data, u8 bit_amount)
         data >>= split_bit_amount;
 
         array_append(bit_array->array, bit_array->next_byte);
-        // CLOG_DEBUG("%zu: 0x%02x",
-        //        array_len(bit_array->array),
-        //        bit_array->current_byte);
+        /* CLOG_DEBUG("%zu: 0x%02x",
+           array_len(bit_array->array),
+           bit_array->current_byte); */
         bit_array->next_byte = 0;
         bit_array->current_bit_idx = 0;
     }
@@ -157,7 +157,7 @@ gif_decompress_lzw(const u8* compressed,
 
     u8 code_size = min_code_size + 1;
     BitArrayReader bit_reader = { 0 };
-    // Read initial clear code
+    /* Read initial clear code */
     u16 code = bit_array_read(compressed, &bit_reader, code_size);
 
     int _temp_i = 0;
@@ -171,7 +171,7 @@ gif_decompress_lzw(const u8* compressed,
     }
 
     size_t indices_len = 0;
-    // Initial code after clear (in order to set previous_code)
+    /* Initial code after clear (in order to set previous_code) */
     code = bit_array_read(compressed, &bit_reader, code_size);
 
     CLOG_DEBUG("READ Code[%d]: 0b%0*b (%d)", _temp_i, code_size, code, code);
@@ -231,7 +231,7 @@ gif_decompress_lzw(const u8* compressed,
             used_val = new_entry;
         }
 
-        // CLOG_DEBUG("k = %x", k);
+        /* CLOG_DEBUG("k = %x", k); */
 
         array_append(new_entry, k);
 
@@ -278,9 +278,9 @@ gif_compress_lzw(Allocator* allocator,
     BitArray bit_array = { 0 };
     bit_array_init(&bit_array, bit_array_buf);
 
-    // Starts from min + 1 because min_code_size is for colors only
-    // special codes (clear code and end of instruction code) are
-    // not included
+    /* Starts from min + 1 because min_code_size is for colors only
+       special codes (clear code and end of instruction code) are
+       not included */
     u8 code_size = min_code_size + 1;
     bit_array_push(&bit_array, clear_code, code_size);
     int _temp_i = 0;
@@ -313,7 +313,7 @@ gif_compress_lzw(Allocator* allocator,
 
         if (result != NULL) {
             array_append(input_buf, k);
-            // CLOG_DEBUG("INPUT: %s", input_buf);
+            /* CLOG_DEBUG("INPUT: %s", input_buf); */
             continue;
         }
 
@@ -337,7 +337,7 @@ gif_compress_lzw(Allocator* allocator,
 
         size_t next_code = hashmap.length + 2;
 
-        // +2 for CLEAR and EOI codes.
+        /* +2 for CLEAR and EOI codes. */
         if (next_code >= lzw_hashmap_max_length) {
             bit_array_push(&bit_array, clear_code, code_size);
 
@@ -415,8 +415,7 @@ gif_compress_lzw(Allocator* allocator,
     *compressed_len = array_len(bit_array.array);
     CLOG_DEBUG("Dictionary length: %zu", hashmap.length);
 
-    // CLOG_DEBUG("0x%x",
-    //        bit_array.array[5608 - 73 - 22]);
+    /* CLOG_DEBUG("0x%x", bit_array.array[5608 - 73 - 22]); */
 
     return bit_array.array;
 }
@@ -481,10 +480,10 @@ gif_write_logical_screen_descriptor(VArena* gif_data,
     varena_push_copy(gif_data, &metadata->height, sizeof(u16));
 
     u8 packed = 0;
-    packed |= metadata->has_gct << 7;                  // 1000 0000
-    packed |= (metadata->color_resolution & 0x7) << 4; // 0111 0000
-    packed |= metadata->sort << 3;                     // 0000 1000
-    packed |= (metadata->gct_size_n & 0x7);            // 0000 0111
+    packed |= metadata->has_gct << 7;
+    packed |= (metadata->color_resolution & 0x7) << 4;
+    packed |= metadata->sort << 3;
+    packed |= (metadata->gct_size_n & 0x7);
 
     varena_push_copy(gif_data, &packed, sizeof(u8));
     varena_push_copy(gif_data, &metadata->background, sizeof(u8));
@@ -570,13 +569,13 @@ void
 gif_write_graphics_control_extension(VArena* gif_data,
                                      GIFGraphicControl control)
 {
-    // u8 bytes[] = {
-    //     0x21, 0xf9, 0x04, 0x01, 0x0a, 0x00, 0x1f, 0x00,
-    // };
-    // size_t i = 0;
-    // for (i = 0; i < sizeof(bytes) / sizeof(u8); i++) {
-    //     varena_push_copy(gif_data, &bytes[i], sizeof(u8));
-    // }
+    /* u8 bytes[] = {
+           0x21, 0xf9, 0x04, 0x01, 0x0a, 0x00, 0x1f, 0x00,
+       };
+       size_t i = 0;
+       for (i = 0; i < sizeof(bytes) / sizeof(u8); i++) {
+           varena_push_copy(gif_data, &bytes[i], sizeof(u8));
+       } */
 
     u8 introducer = 0x21;
     u8 control_label = 0xf9;
@@ -637,7 +636,7 @@ gif_write_img_descriptor(VArena* gif_data, const GIFMetadata* metadata)
     varena_push_copy(gif_data, &metadata->local_color_table, sizeof(u8));
 }
 
-// Reads the data blocks and writes all bytes to a continous buffer.
+/* Reads the data blocks and writes all bytes to a continous buffer. */
 size_t
 gif_read_img_data(const u8* in_bytes, u8* lzw_min_code, u8* out_bytes)
 {
@@ -667,8 +666,8 @@ gif_read_img_data(const u8* in_bytes, u8* lzw_min_code, u8* out_bytes)
     return read_cursor;
 }
 
-// Writes the compressed indices
-// into data blocks as specified in the GIF specs.
+/* Writes the compressed indices
+   into data blocks as specified in the GIF specs. */
 void
 gif_write_img_data(VArena* gif_data,
                    u8 lzw_min_code,
