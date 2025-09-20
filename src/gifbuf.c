@@ -201,7 +201,7 @@ gif_decompress_lzw(const u8* compressed,
         _temp_i++;
 
         if (code == clear_code) {
-            array_len(code_table) = eoi_code;
+            array_header(code_table)->length = eoi_code;
             code_size = min_code_size + 1;
             continue;
         }
@@ -318,10 +318,9 @@ gif_compress_lzw(Allocator* allocator,
           (ByteString){ .ptr = (char*)input_buf,
                         .length = array_len(input_buf) });
 
-        if (idx == NULL) {
+        if (idx == NULL && clog_log_level_get() <= CLOG_LOG_LEVEL_ERROR) {
             CLOG_ERROR("Key was not present in hashmap: ");
-            if(clog_log_level_get() <= CLOG_LOG_LEVEL_ERROR)
-                clog_print_array_u8(input_buf, array_len(input_buf));
+            clog_print_array_u8(input_buf, array_len(input_buf));
         }
         assert(idx != NULL);
         assert(*idx < lzw_hashmap_max_length);
@@ -329,7 +328,7 @@ gif_compress_lzw(Allocator* allocator,
         bit_array_push(&bit_array, *idx, code_size);
         _temp_i++;
 
-        array_len(input_buf) = 0;
+        array_header(input_buf)->length = 0;
         array_append(input_buf, k);
 
         size_t next_code = hashmap.length + 2;
@@ -502,8 +501,8 @@ void
 gif_write_global_color_table(VArena* gif_data, const GIFColor* colors)
 {
     u8 N = ((u8*)gif_data->base)[10] & LSB_MASK(3);
-    uint color_amount = 1 << (N + 1);
-    uint i = 0;
+    size_t color_amount = 1 << (N + 1);
+    size_t i = 0;
     for (i = 0; i < color_amount; i++) {
         varena_push_copy(gif_data, &colors[i], sizeof(GIFColor));
     }
@@ -760,8 +759,6 @@ gif_export(GIFObject gif_object,
            size_t max_block_length,
            const char* out_path)
 {
-    clog_log_level_set(CLOG_LOG_LEVEL_INFO);
-
     VArena gif_data;
     varena_init_ex(&gif_data, GIF_ALLOC_SIZE, system_page_size(), 1);
 

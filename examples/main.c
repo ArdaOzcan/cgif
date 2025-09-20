@@ -67,7 +67,7 @@ main(void)
 
     size_t size = 0;
     unsigned char* bytes =
-      read_file_to_buffer("test/test-images/bird512.gif", &size);
+      read_file_to_buffer("test/test-images/woman256.gif", &size);
     GIFObject gif_object = { 0 };
     gif_import(bytes, &gif_object);
 
@@ -126,28 +126,30 @@ main(void)
 int
 __main(void)
 {
-    GIFMetadata metadata = { 0 };
-    size_t size = 0;
-    unsigned char* file_data =
-      read_file_to_buffer("test/test-images/woman256.gif", &size);
-
-    size_t cursor = 0;
-
-    cursor += gif_read_header(file_data, &metadata.version);
-    cursor += gif_read_logical_screen_descriptor(file_data + cursor, &metadata);
-    GIFColor* colors =
-      malloc(sizeof(GIFColor) * (1 << (metadata.gct_size_n + 1)));
-    cursor += gif_read_global_color_table(
-      file_data + cursor, metadata.gct_size_n, colors);
-    metadata.min_code_size = 8;
-    metadata.has_graphic_control = false;
-
-    GIFGraphicControl graphic_control = { 0 };
-
+    GIFMetadata metadata = (GIFMetadata){ .version = GIF87a,
+                                          .background = 0xe7,
+                                          .color_resolution = 6,
+                                          .sort = 0,
+                                          .local_color_table = 0,
+                                          .pixel_aspect_ratio = 0,
+                                          .min_code_size = 8,
+                                          .gct_size_n = 7,
+                                          .left = 0,
+                                          .top = 0,
+                                          .width = 256,
+                                          .height = 256,
+                                          .has_graphic_control = false,
+                                          .has_gct = true };
     GIFObject gif_object = { .color_table = woman256_colors,
                              .indices = woman256_indices,
-                             .graphic_control = graphic_control,
                              .metadata = metadata };
     gif_export(gif_object, 4096, 254, "out/test_woman_256.gif");
+
+    size_t size = 0;
+    unsigned char* bytes = read_file_to_buffer("out/test_woman_256.gif", &size);
+    GIFObject imported_gif = { 0 };
+
+    gif_import(bytes, &imported_gif);
+
     return 0;
 }

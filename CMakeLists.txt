@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.5)
 project(GifBuf C)
 
 set(CMAKE_C_STANDARD 99)
@@ -68,4 +68,4 @@ target_link_libraries(gifbuf_example PRIVATE gifbuf raylib)
 
 add_executable(test ${TEST_FILES})
 target_include_directories(test PRIVATE ${munit_SOURCE_DIR})
-target_link_libraries(test PRIVATE gifbuf ccore)
+target_link_libraries(test PRIVATE gifbuf ccore clog)

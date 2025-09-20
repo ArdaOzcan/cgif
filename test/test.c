@@ -1,3 +1,4 @@
+#include "clog.h"
 #include "munit.h"
 
 #include "test-images/cat16.h"
@@ -126,7 +127,7 @@ test_decode_woman_256(const MunitParameter params[], void* user_data_or_fixture)
                                           .sort = 0,
                                           .local_color_table = 0,
                                           .pixel_aspect_ratio = 0,
-                                          .min_code_size = 7,
+                                          .min_code_size = 8,
                                           .gct_size_n = 7,
                                           .left = 0,
                                           .top = 0,
@@ -553,5 +554,7 @@ static const MunitSuite suite = {
 int
 main(int argc, char* argv[])
 {
+    clog_log_level_set(CLOG_LOG_LEVEL_INFO);
+
     return munit_suite_main(&suite, NULL, argc, argv);
 }
