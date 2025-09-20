@@ -2,6 +2,7 @@
 #include "../test/test-images/cat256.h"
 #include "../test/test-images/cat64.h"
 #include "../test/test-images/woman256.h"
+#include "clog.h"
 #include <gifbuf/gifbuf.h>
 
 #include <stdbool.h>
@@ -61,8 +62,8 @@ _main(void)
 int
 main(void)
 {
-    const int screenWidth = 512;
-    const int screenHeight = 512;
+    const int screenWidth = 256;
+    const int screenHeight = 256;
 
     InitWindow(screenWidth, screenHeight, "Pixel buffer example");
 
@@ -70,6 +71,7 @@ main(void)
     unsigned char* bytes =
       read_file_to_buffer("test/test-images/woman256.gif", &size);
     GIFObject gif_object = { 0 };
+    clog_log_level_set(CLOG_LOG_LEVEL_INFO);
     gif_import(bytes, &gif_object);
 
     uint32_t* pixels = malloc(gif_object.metadata.width *
