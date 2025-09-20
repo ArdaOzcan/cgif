@@ -120,7 +120,8 @@ bit_array_pad_last_byte(BitArray* bit_array)
 void
 lzw_hashmap_reset(Hashmap* hashmap, u16 eoi_code, Allocator* allocator)
 {
-    for (u16 i = 0; i <= eoi_code - 2; i++) {
+    u16 i = 0;
+    for (i = 0; i <= eoi_code - 2; i++) {
         u8* key_string = array(u8, 1, allocator);
         array_append(key_string, i);
 
@@ -147,7 +148,8 @@ gif_decompress_lzw(const u8* compressed,
     const size_t eoi_code = clear_code + 1;
     const u8** code_table = array(const u8*, 128, allocator);
 
-    for (int i = 0; i <= eoi_code; i++) {
+    size_t i = 0;
+    for (i = 0; i <= eoi_code; i++) {
         u8* str = array(u8, 1, allocator);
         array_append(str, i);
         array_append(code_table, str);
@@ -176,8 +178,8 @@ gif_decompress_lzw(const u8* compressed,
     CLOG_DEBUG("Code size: %hhu", code_size);
     _temp_i++;
 
-    for (int j = 0; j < array_len(code_table[code]); j++) {
-        out_indices[indices_len++] = code_table[code][j];
+    for (i = 0; i < array_len(code_table[code]); i++) {
+        out_indices[indices_len++] = code_table[code][i];
     }
 
     u16 previous_code = code;
@@ -192,7 +194,7 @@ gif_decompress_lzw(const u8* compressed,
         CLOG_DEBUG("    0b%08b (0x%x)",
                    compressed[bit_reader.byte_idx],
                    compressed[bit_reader.byte_idx]);
-        for (int i = -5; i < 7 - bit_reader.bit_idx; i++)
+        for (i = -5; i < 7 - bit_reader.bit_idx; i++)
             clog_printf_debug(" ");
         clog_printf_debug("-^\n");
         CLOG_DEBUG("    Code size: %hhu, Start Bit Index: %d",
@@ -214,7 +216,8 @@ gif_decompress_lzw(const u8* compressed,
         assert(code_table[previous_code] != NULL);
         size_t previous_code_length = array_len(code_table[previous_code]);
         u8* new_entry = array(u8, previous_code_length + 1, allocator);
-        for (int i = 0; i < previous_code_length; i++)
+        size_t i = 0;
+        for (i = 0; i < previous_code_length; i++)
             array_append(new_entry, code_table[previous_code][i]);
 
         const u8* used_val = NULL;
@@ -232,8 +235,8 @@ gif_decompress_lzw(const u8* compressed,
 
         array_append(new_entry, k);
 
-        for (int j = 0; j < array_len(used_val); j++) {
-            out_indices[indices_len++] = used_val[j];
+        for (i = 0; i < array_len(used_val); i++) {
+            out_indices[indices_len++] = used_val[i];
             CLOG_DEBUG("READ: Index[%zu]: %hhu",
                        indices_len - 1,
                        out_indices[indices_len - 1]);
@@ -293,7 +296,8 @@ gif_compress_lzw(Allocator* allocator,
     array_append(input_buf, indices[0]);
 
     u8* appended = array(u8, INPUT_BUFFER_CAP, allocator);
-    for (size_t i = 1; i < indices_len; i++) {
+    size_t i = 0;
+    for (i = 1; i < indices_len; i++) {
         char k = indices[i];
         CLOG_DEBUG("Input Buffer (Length=%zu): ", array_len(input_buf));
         if (clog_log_level_get() <= CLOG_LOG_LEVEL_DEBUG)
@@ -366,7 +370,8 @@ gif_compress_lzw(Allocator* allocator,
 
         CLOG_DEBUG("~~~~FOUND~~~~");
         clog_printf_debug("Dict['");
-        for (int i = 0; i < key->length; i++) {
+        size_t i = 0;
+        for (i = 0; i < key->length; i++) {
             clog_printf_debug("<%d>", (unsigned char)key->ptr[i]);
         }
         clog_printf_debug("'] = %d\n", *val);
@@ -375,10 +380,10 @@ gif_compress_lzw(Allocator* allocator,
         CLOG_DEBUG("to Byte[%zu]: ", array_len(bit_array.array) - 1);
         clog_printf_debug(
           "    0b%08b (0x%x)\n", bit_array.next_byte, bit_array.next_byte);
-        for (int i = -6; i < 7 - bit_array.current_bit_idx; i++)
+        for (i = -6; i < 7 - bit_array.current_bit_idx; i++)
             clog_printf_debug(" ");
         clog_printf_debug("^");
-        for (int i = 0; i < code_size; i++)
+        for (i = 0; i < code_size; i++)
             clog_printf_debug("-");
         clog_printf_debug("\n");
         clog_printf_debug("    Code size: %hhu, Current Bit Index: %d\n",
@@ -490,7 +495,8 @@ size_t
 gif_read_global_color_table(const u8* bytes, u8 N, GIFColor* colors)
 {
     u16 color_amount = 1 << (N + 1);
-    for (int i = 0; i < color_amount; i++) {
+    size_t i = 0;
+    for (i = 0; i < color_amount; i++) {
         memcpy(colors[i], bytes + i * sizeof(GIFColor), sizeof(GIFColor));
     }
 
@@ -567,7 +573,8 @@ gif_write_graphics_control_extension(VArena* gif_data,
     // u8 bytes[] = {
     //     0x21, 0xf9, 0x04, 0x01, 0x0a, 0x00, 0x1f, 0x00,
     // };
-    // for (int i = 0; i < sizeof(bytes) / sizeof(u8); i++) {
+    // size_t i = 0;
+    // for (i = 0; i < sizeof(bytes) / sizeof(u8); i++) {
     //     varena_push_copy(gif_data, &bytes[i], sizeof(u8));
     // }
 

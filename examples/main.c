@@ -41,7 +41,8 @@ int
 _main(void)
 {
     size_t size = 0;
-    unsigned char* bytes = read_file_to_buffer("test/test-images/woman256.gif", &size);
+    unsigned char* bytes =
+      read_file_to_buffer("test/test-images/woman256.gif", &size);
     GIFObject imported_gif = { 0 };
 
     gif_import(bytes, &imported_gif);
@@ -75,8 +76,9 @@ main(void)
                               gif_object.metadata.height * sizeof(uint32_t));
 
     // Fill with something (gradient)
-    for (int y = 0; y < screenHeight; y++) {
-        for (int x = 0; x < screenWidth; x++) {
+    int x, y = 0;
+    for (y = 0; y < screenHeight; y++) {
+        for (x = 0; x < screenWidth; x++) {
             unsigned char r =
               gif_object
                 .color_table[gif_object.indices[y * screenWidth + x]][0];
