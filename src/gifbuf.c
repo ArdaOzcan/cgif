@@ -151,7 +151,7 @@ gif_decompress_lzw(const u8* compressed,
     size_t i = 0;
     for (i = 0; i <= eoi_code; i++) {
         u8* str = array(u8, 1, allocator);
-        array_append(str, i);
+        array_append(str, (u8)i);
         array_append(code_table, str);
     }
 
